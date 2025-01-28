@@ -1,9 +1,10 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import * as d3 from 'd3';
+import { useLifeGridCalculations } from '../hooks/useLifeGridCalculations';
 
 const LifeGrid = () => {
   const svgRef = useRef(null);
-  const [timeUnit, setTimeUnit] = useState('weeks');
+  const [timeUnit, setTimeUnit] = useState('years');
   const [birthDate, setBirthDate] = useState('1978-01-01');
   const [lifespan, setLifespan] = useState(80);
   const [windowWidth, setWindowWidth] = useState(window.innerWidth);
@@ -11,6 +12,29 @@ const LifeGrid = () => {
     { id: 1, name: 'Sleeping', hoursPerDay: 8, color: '#000000', spent: false, future: false },
     { id: 2, name: 'Eating', hoursPerDay: 2, color: '#22C55E', spent: false, future: false }
   ]);
+
+  const { 
+    calculateBaseProgress, 
+    calculateProgress, 
+    calculateAge, 
+    calculateActivityPastFutureUnits, 
+    calculateTimeUnits, 
+    getActivityColorForCell 
+  } = useLifeGridCalculations(
+    birthDate,
+    lifespan,
+    activities,
+    timeUnit,
+    windowWidth
+  );
+
+  // Keep track of progress state
+  const [progress, setProgress] = useState(calculateProgress());
+
+  // Update progress when dependencies change
+  useEffect(() => {
+    setProgress(calculateProgress());
+  }, [calculateProgress, activities, timeUnit, birthDate, lifespan]);
 
   useEffect(() => {
     const handleResize = () => setWindowWidth(window.innerWidth);
@@ -34,210 +58,67 @@ const LifeGrid = () => {
   }, []);
 
   const handleActivityChange = useCallback((id, field, value) => {
-    setActivities(activities.map(activity => {
+    setActivities(prevActivities => prevActivities.map(activity => {
       if (activity.id === id) {
         return { ...activity, [field]: value };
       }
       return activity;
     }));
-  }, [activities]);
+  }, []);
 
   const handleActivityHoursChange = useCallback((id, newHours) => {
     const hours = Math.min(24, Math.max(0, parseFloat(newHours) || 0));
-    setActivities(activities.map(activity => {
+    setActivities(prevActivities => prevActivities.map(activity => {
       if (activity.id === id) {
         return { ...activity, hoursPerDay: hours };
       }
       return activity;
     }));
-  }, [activities]);
+  }, []);
 
   const handleActivityNameChange = useCallback((id, name) => {
-    setActivities(activities.map(activity => {
+    setActivities(prevActivities => prevActivities.map(activity => {
       if (activity.id === id) {
         return { ...activity, name };
       }
       return activity;
     }));
-  }, [activities]);
+  }, []);
 
   const handleActivityColorChange = useCallback((id, color) => {
-    setActivities(activities.map(activity => {
+    setActivities(prevActivities => prevActivities.map(activity => {
       if (activity.id === id) {
         return { ...activity, color };
       }
       return activity;
     }));
-  }, [activities]);
+  }, []);
 
   const getUniqueColor = useCallback(() => {
     const colors = [
       '#EF4444', '#F59E0B', '#10B981', '#6366F1', '#EC4899', 
       '#8B5CF6', '#14B8A6', '#F97316', '#06B6D4', '#8B5CF6'
     ];
-    const usedColors = activities.map(a => a.color);
-    const availableColors = colors.filter(color => !usedColors.includes(color));
-    return availableColors.length > 0 ? availableColors[0] : colors[Math.floor(Math.random() * colors.length)];
-  }, [activities]);
+    return colors[Math.floor(Math.random() * colors.length)];
+  }, []);
 
   const handleAddActivity = useCallback(() => {
-    const newActivity = {
-      id: activities.length + 1,
-      name: 'New Activity',
-      hoursPerDay: 1,
-      color: getUniqueColor(),
-      spent: false,
-      future: false
-    };
-    setActivities([...activities, newActivity]);
-  }, [activities, getUniqueColor]);
+    setActivities(prevActivities => {
+      const newActivity = {
+        id: prevActivities.length + 1,
+        name: 'New Activity',
+        hoursPerDay: 1,
+        color: getUniqueColor(),
+        spent: false,
+        future: false
+      };
+      return [...prevActivities, newActivity];
+    });
+  }, [getUniqueColor]);
 
   const handleRemoveActivity = useCallback((id) => {
-    setActivities(activities.filter(activity => activity.id !== id));
-  }, [activities]);
-
-  const calculateUnits = useCallback(() => {
-    switch (timeUnit) {
-      case 'hours':
-        return 24 * 365 * lifespan;
-      case 'days':
-        return 365 * lifespan;
-      case 'weeks':
-        return 52 * lifespan;
-      case 'months':
-        return 12 * lifespan;
-      case 'years':
-        return lifespan;
-      default:
-        return 52 * lifespan;
-    }
-  }, [timeUnit, lifespan]);
-
-  const calculateTimeUnits = useCallback(() => {
-    const svgWidth = windowWidth * 0.95;
-    const padding = 2;
-    const minCellSize = 15;
-    const maxCellSize = 25;
-    
-    let units = calculateUnits();
-    let unitsPerRow = Math.floor(Math.sqrt(units) * 1.5);
-    let cellSize = Math.max(minCellSize, Math.min(maxCellSize, Math.floor((svgWidth - padding * (unitsPerRow + 1)) / unitsPerRow)));
-    let rows = Math.ceil(units / unitsPerRow);
-    
-    return { units, unitsPerRow, rows, cellSize, padding };
-  }, [windowWidth, calculateUnits]);
-
-  const calculateAge = useCallback(() => {
-    const today = new Date();
-    const birth = new Date(birthDate);
-    const diffTime = today - birth;
-    
-    switch (timeUnit) {
-      case 'hours':
-        return Math.floor(diffTime / (1000 * 60 * 60));
-      case 'days':
-        return Math.floor(diffTime / (1000 * 60 * 60 * 24));
-      case 'weeks':
-        return Math.floor(diffTime / (1000 * 60 * 60 * 24 * 7));
-      case 'months':
-        return Math.floor(diffTime / (1000 * 60 * 60 * 24 * 30.44)); // Average month length
-      case 'years':
-        return Math.floor(diffTime / (1000 * 60 * 60 * 24 * 365.25)); // Account for leap years
-      default:
-        return 0;
-    }
-  }, [birthDate, timeUnit]);
-
-  const calculateProgress = useCallback(() => {
-    const { units } = calculateTimeUnits();
-    const lived = calculateAge();
-    
-    return {
-      total: units,
-      lived,
-      remaining: Math.max(0, units - lived),
-      progress: ((lived / units) * 100).toFixed(1)
-    };
-  }, [calculateTimeUnits, calculateAge]);
-
-  const calculateActivityUnits = useCallback((activity) => {
-    const hoursPerDay = activity.hoursPerDay;
-    const totalDays = lifespan * 365;
-    
-    switch (timeUnit) {
-      case 'hours':
-        return Math.floor(hoursPerDay * totalDays);
-      case 'days':
-        return Math.floor((hoursPerDay / 24) * totalDays);
-      case 'weeks':
-        return Math.floor((hoursPerDay / 24) * totalDays / 7);
-      case 'months':
-        return Math.floor((hoursPerDay / 24) * totalDays / 30.44); // Average month length
-      case 'years':
-        return Math.floor((hoursPerDay / 24) * totalDays / 365.25); // Account for leap years
-      default:
-        return 0;
-    }
-  }, [timeUnit, lifespan]);
-
-  const calculateActivityPastFutureUnits = useCallback((activity) => {
-    const totalUnits = calculateActivityUnits(activity);
-    const progress = calculateProgress();
-    const unitsPerDay = activity.hoursPerDay / 24;
-    
-    // Calculate lived and remaining units based on progress
-    const livedDays = Math.floor(progress.lived * unitsPerDay);
-    const remainingDays = Math.floor((progress.total - progress.lived) * unitsPerDay);
-    
-    return {
-      past: livedDays,
-      future: remainingDays,
-      total: totalUnits
-    };
-  }, [calculateActivityUnits, calculateProgress]);
-
-  const getActivityColorForCell = useCallback((cellIndex, isLived) => {
-    const progress = calculateProgress();
-    
-    // Calculate how many cells should be colored for each activity
-    for (const activity of activities) {
-      if ((isLived && activity.spent) || (!isLived && activity.future)) {
-        const hoursPerDay = activity.hoursPerDay;
-        const daysToConsider = isLived ? progress.lived : (progress.total - progress.lived);
-        
-        // Calculate cells based on time unit
-        let cellsForActivity;
-        const hoursForActivity = (hoursPerDay * daysToConsider);
-        
-        switch (timeUnit) {
-          case 'hours':
-            cellsForActivity = hoursForActivity;
-            break;
-          case 'days':
-            cellsForActivity = hoursForActivity / 24;
-            break;
-          case 'weeks':
-            cellsForActivity = hoursForActivity / (24 * 7);
-            break;
-          case 'months':
-            cellsForActivity = hoursForActivity / (24 * 30.44);
-            break;
-          case 'years':
-            cellsForActivity = hoursForActivity / (24 * 365.25);
-            break;
-          default:
-            cellsForActivity = 0;
-        }
-
-        // Check if this cell should be colored
-        if (cellIndex < Math.floor(cellsForActivity)) {
-          return activity.color;
-        }
-      }
-    }
-    
-    return isLived ? '#3B82F6' : '#E5E7EB';
-  }, [activities, timeUnit, calculateProgress]);
+    setActivities(prevActivities => prevActivities.filter(activity => activity.id !== id));
+  }, []);
 
   useEffect(() => {
     if (!svgRef.current) return;
@@ -269,7 +150,7 @@ const LifeGrid = () => {
       .attr('rx', 2)
       .attr('ry', 2)
       .attr('fill', (d, i) => {
-        const isLived = i < calculateProgress().lived;
+        const isLived = i < progress.lived;
         return getActivityColorForCell(i, isLived);
       })
       .attr('stroke', '#D1D5DB')
@@ -347,8 +228,8 @@ const LifeGrid = () => {
 
     // Add life progress stats in two columns with more spacing
     const lifeStats = [
-      { color: '#3B82F6', text: `${calculateProgress().lived} ${timeUnit} lived` },
-      { color: '#E5E7EB', text: `${calculateProgress().remaining} ${timeUnit} remaining` }
+      { color: '#3B82F6', text: `${progress.lived} ${timeUnit} lived` },
+      { color: '#E5E7EB', text: `${progress.remaining} ${timeUnit} remaining` }
     ];
 
     // Display stats in two columns with more spacing
@@ -373,8 +254,7 @@ const LifeGrid = () => {
       }
     });
 
-    // Add progress bar
-    const progress = calculateProgress();
+    // Progress bar
     const progressBarWidth = middleX - 60; // Full width minus margins
     const progressBarHeight = 12;
     const progressBarY = 90; // Position below the stats
@@ -390,12 +270,100 @@ const LifeGrid = () => {
       .attr('fill', '#E5E7EB')
       .attr('rx', 6);
 
-    // Progress bar fill
-    progressGroup.append('rect')
-      .attr('width', progressBarWidth * (progress.progress / 100))
-      .attr('height', progressBarHeight)
-      .attr('fill', '#3B82F6')
-      .attr('rx', 6);
+    // Calculate total hours for past and future activities
+    const pastActivities = activities.filter(a => a.spent);
+    const futureActivities = activities.filter(a => a.future);
+    const totalPastHours = pastActivities.reduce((sum, a) => sum + a.hoursPerDay, 0);
+    const totalFutureHours = futureActivities.reduce((sum, a) => sum + a.hoursPerDay, 0);
+
+    // Add blue progress bar for unallocated lived time
+    if (totalPastHours < 24) {
+      progressGroup.append('rect')
+        .attr('width', progressBarWidth * (progress.progress / 100))
+        .attr('height', progressBarHeight)
+        .attr('fill', '#3B82F6')
+        .attr('rx', 6);
+    }
+    
+    // Function to create activity segment
+    const createActivitySegment = (activity, start, end, isLived) => {
+      const segmentWidth = (end - start) * progressBarWidth;
+      if (segmentWidth > 0) {
+        const segment = progressGroup.append('rect')
+          .attr('x', start * progressBarWidth)
+          .attr('width', segmentWidth)
+          .attr('height', progressBarHeight)
+          .attr('fill', activity.color)
+          .attr('rx', 6)
+          .style('cursor', 'pointer');
+
+        // Create tooltip group
+        const tooltip = progressGroup.append('g')
+          .attr('class', 'tooltip')
+          .style('opacity', 0)
+          .attr('pointer-events', 'none');
+
+        tooltip.append('rect')
+          .attr('rx', 4)
+          .attr('ry', 4)
+          .attr('fill', '#1F2937')
+          .attr('padding', 8);
+
+        const timeType = isLived ? 'Past' : 'Future';
+        const tooltipText = tooltip.append('text')
+          .attr('fill', 'white')
+          .attr('text-anchor', 'middle')
+          .attr('dy', '0.32em')
+          .style('font-size', '12px')
+          .text(`${activity.name} - ${timeType} (${Math.round(activity.hoursPerDay / 24 * 100)}%)`);
+
+        // Size the background rectangle based on text
+        const textBBox = tooltipText.node().getBBox();
+        tooltip.select('rect')
+          .attr('width', textBBox.width + 16)
+          .attr('height', textBBox.height + 8)
+          .attr('x', -textBBox.width/2 - 8)
+          .attr('y', -textBBox.height/2 - 4);
+
+        // Add hover interactions
+        segment
+          .on('mouseover', function(event) {
+            tooltip
+              .attr('transform', `translate(${start * progressBarWidth + segmentWidth/2}, -10)`)
+              .transition()
+              .duration(200)
+              .style('opacity', 1);
+          })
+          .on('mouseout', function() {
+            tooltip
+              .transition()
+              .duration(200)
+              .style('opacity', 0);
+          });
+      }
+    };
+
+    // Add past activity segments
+    let currentX = 0;
+    const livedProportion = progress.progress / 100;
+    
+    pastActivities.forEach(activity => {
+      const proportion = activity.hoursPerDay / Math.max(24, totalPastHours);
+      const segmentWidth = proportion * livedProportion;
+      createActivitySegment(activity, currentX, currentX + segmentWidth, true);
+      currentX += segmentWidth;
+    });
+
+    // Add future activity segments
+    currentX = progress.progress / 100;
+    const remainingProportion = (100 - progress.progress) / 100;
+    
+    futureActivities.forEach(activity => {
+      const proportion = activity.hoursPerDay / Math.max(24, totalFutureHours);
+      const segmentWidth = proportion * remainingProportion;
+      createActivitySegment(activity, currentX, currentX + segmentWidth, false);
+      currentX += segmentWidth;
+    });
 
     // Progress text
     progressGroup.append('text')
@@ -417,27 +385,6 @@ const LifeGrid = () => {
       .style('font-weight', 'bold')
       .text('Activities');
 
-    // Add button with better positioning
-    const addButton = header.append('g')
-      .attr('transform', 'translate(100, -5)')
-      .style('cursor', 'pointer')
-      .on('click', handleAddActivity);
-
-    addButton.append('rect')
-      .attr('width', 24)
-      .attr('height', 24)
-      .attr('fill', '#3B82F6')
-      .attr('rx', 6)
-      .attr('ry', 6);
-
-    addButton.append('text')
-      .attr('x', 12)
-      .attr('y', 17)
-      .attr('text-anchor', 'middle')
-      .style('font-size', '20px')
-      .style('fill', 'white')
-      .text('+');
-
     // Activity list with more horizontal space
     const activityList = activitiesSection.append('g')
       .attr('transform', 'translate(0, 40)');
@@ -455,57 +402,70 @@ const LifeGrid = () => {
         .attr('rx', 4)
         .attr('ry', 4);
 
-      // Activity name and units in three lines with editable hours
+      // Activity name (editable for all activities)
       const nameGroup = activityGroup.append('g')
         .attr('transform', 'translate(30, 0)');
 
-      // Activity name (editable for custom activities)
-      const nameText = nameGroup.append('text')
-        .attr('y', 20)
+      const nameInput = nameGroup.append('foreignObject')
+        .attr('y', 5)
+        .attr('width', 150)
+        .attr('height', 24);
+
+      const input = nameInput.append('xhtml:input')
+        .attr('type', 'text')
+        .attr('value', activity.name)
         .style('font-size', '14px')
         .style('font-weight', 'bold')
-        .text(activity.name);
+        .style('border', 'none')
+        .style('background', 'none')
+        .style('width', '100%')
+        .style('padding', '0')
+        .style('outline', 'none')
+        .style('border-bottom', '1px solid transparent')
+        .style('transition', 'border-bottom-color 0.2s')
+        .on('mouseover', function() {
+          this.style.borderBottomColor = '#D1D5DB';
+        })
+        .on('mouseout', function() {
+          if (document.activeElement !== this) {
+            this.style.borderBottomColor = 'transparent';
+          }
+        })
+        .on('focus', function() {
+          this.style.borderBottomColor = '#3B82F6';
+        })
+        .on('blur', function() {
+          this.style.borderBottomColor = 'transparent';
+        })
+        .on('change', function() {
+          handleActivityNameChange(activity.id, this.value);
+        });
 
-      if (activity.id > 2) {
-        nameText
-          .style('cursor', 'pointer')
-          .on('click', function() {
-            const newName = prompt('Enter activity name:', activity.name);
-            if (newName !== null) {
-              handleActivityNameChange(activity.id, newName);
-            }
-          });
-      }
-
-      // Color indicator (clickable for custom activities)
+      // Color indicator (clickable for all activities)
       const colorRect = activityGroup.append('rect')
         .attr('width', 12)
         .attr('height', 12)
         .attr('fill', activity.color)
         .attr('rx', 2)
         .attr('ry', 2)
-        .attr('transform', 'translate(8, 14)');
+        .attr('transform', 'translate(8, 14)')
+        .style('cursor', 'pointer')
+        .on('click', function() {
+          const colors = [
+            '#EF4444', '#F59E0B', '#10B981', '#6366F1', '#EC4899', 
+            '#8B5CF6', '#14B8A6', '#F97316', '#06B6D4', '#8B5CF6'
+          ];
+          const currentIndex = colors.indexOf(activity.color);
+          const nextColor = colors[(currentIndex + 1) % colors.length];
+          handleActivityColorChange(activity.id, nextColor);
+        });
 
-      if (activity.id > 2) {
-        colorRect
-          .style('cursor', 'pointer')
-          .on('click', function() {
-            const colors = [
-              '#EF4444', '#F59E0B', '#10B981', '#6366F1', '#EC4899', 
-              '#8B5CF6', '#14B8A6', '#F97316', '#06B6D4', '#8B5CF6'
-            ];
-            const currentIndex = colors.indexOf(activity.color);
-            const nextColor = colors[(currentIndex + 1) % colors.length];
-            handleActivityColorChange(activity.id, nextColor);
-          });
-
-        // Add small indicator for clickable color
-        activityGroup.append('circle')
-          .attr('cx', 20)
-          .attr('cy', 26)
-          .attr('r', 2)
-          .attr('fill', '#6B7280');
-      }
+      // Add small indicator for clickable color
+      activityGroup.append('circle')
+        .attr('cx', 20)
+        .attr('cy', 26)
+        .attr('r', 2)
+        .attr('fill', '#6B7280');
 
       // Hours input
       const hoursGroup = nameGroup.append('g')
@@ -516,49 +476,45 @@ const LifeGrid = () => {
         .style('font-size', '12px')
         .text('Hours per day:');
 
-      const hoursInput = hoursGroup.append('g')
-        .attr('transform', 'translate(80, -4)');
+      const hoursInput = hoursGroup.append('foreignObject')
+        .attr('x', 80)
+        .attr('y', -4)
+        .attr('width', 50)
+        .attr('height', 24);
 
-      hoursInput.append('rect')
-        .attr('width', 40)
-        .attr('height', 20)
-        .attr('fill', '#FFFFFF')
-        .attr('stroke', '#D1D5DB')
-        .attr('rx', 4)
-        .attr('ry', 4);
-
-      const hoursText = hoursInput.append('text')
-        .attr('x', 20)
-        .attr('y', 14)
-        .attr('text-anchor', 'middle')
+      const hoursInputField = hoursInput.append('xhtml:input')
+        .attr('type', 'number')
+        .attr('min', '0')
+        .attr('max', '24')
+        .attr('step', '0.5')
+        .attr('value', activity.hoursPerDay)
+        .style('width', '100%')
+        .style('height', '100%')
+        .style('padding', '2px 4px')
+        .style('border', '1px solid #D1D5DB')
+        .style('border-radius', '4px')
         .style('font-size', '12px')
-        .text(activity.hoursPerDay);
-
-      hoursInput
-        .style('cursor', 'pointer')
-        .on('click', function() {
-          const newHours = prompt(`Enter hours per day for ${activity.name} (0-24):`, activity.hoursPerDay);
-          if (newHours !== null) {
-            handleActivityHoursChange(activity.id, newHours);
-          }
+        .on('change', function() {
+          const newHours = Math.min(24, Math.max(0, parseFloat(this.value) || 0));
+          handleActivityHoursChange(activity.id, newHours);
+          this.value = newHours; // Update the input to show the clamped value
         });
 
       // Total units under hours
-      const pastUnits = calculateActivityPastFutureUnits(activity);
       hoursGroup.append('text')
         .attr('x', 0)
         .attr('y', 32)
         .style('font-size', '12px')
         .style('fill', '#6B7280')
-        .text(`Total: ${pastUnits.total} ${timeUnit}`);
+        .text(`Total: ${calculateActivityPastFutureUnits(activity).total} ${timeUnit}`);
 
       // Past/Future toggles with units
       const toggleGroup = activityGroup.append('g')
+        .style('cursor', 'pointer')
         .attr('transform', `translate(${(svgWidth - 40) / 4 + 20}, 12)`);
 
       // Past toggle and units
       const spentToggle = toggleGroup.append('g')
-        .style('cursor', 'pointer')
         .on('click', () => handleActivityChange(activity.id, 'spent', !activity.spent));
 
       spentToggle.append('rect')
@@ -578,12 +534,11 @@ const LifeGrid = () => {
         .attr('x', 70)
         .attr('y', 12)
         .style('font-size', '12px')
-        .text(`${pastUnits.past} ${timeUnit}`);
+        .text(`${calculateActivityPastFutureUnits(activity).past} ${timeUnit}`);
 
       // Future toggle and units
       const futureToggle = toggleGroup.append('g')
         .attr('transform', 'translate(0, 25)')
-        .style('cursor', 'pointer')
         .on('click', () => handleActivityChange(activity.id, 'future', !activity.future));
 
       futureToggle.append('rect')
@@ -603,7 +558,7 @@ const LifeGrid = () => {
         .attr('x', 70)
         .attr('y', 12)
         .style('font-size', '12px')
-        .text(`${pastUnits.future} ${timeUnit}`);
+        .text(`${calculateActivityPastFutureUnits(activity).future} ${timeUnit}`);
 
       // Delete button for non-default activities
       if (activity.id > 2) {
@@ -629,6 +584,27 @@ const LifeGrid = () => {
       }
     });
 
+    // Add "New Activity" button after the activities list
+    const addButton = activityList.append('g')
+      .attr('transform', `translate(0, ${activities.length * 65})`)
+      .style('cursor', 'pointer')
+      .on('click', handleAddActivity);
+
+    addButton.append('rect')
+      .attr('width', 120)
+      .attr('height', 32)
+      .attr('fill', '#3B82F6')
+      .attr('rx', 6)
+      .attr('ry', 6);
+
+    addButton.append('text')
+      .attr('x', 60)
+      .attr('y', 21)
+      .attr('text-anchor', 'middle')
+      .style('font-size', '14px')
+      .style('fill', 'white')
+      .text('New Activity');
+
     // Update SVG height to accommodate everything
     svg.attr('width', svgWidth)
       .attr('height', statsY + statsHeight + (cellSize + padding) * 2);
@@ -639,8 +615,7 @@ const LifeGrid = () => {
     windowWidth,
     calculateTimeUnits,
     calculateAge,
-    activities,
-    calculateActivityUnits,
+    calculateActivityPastFutureUnits,
     calculateProgress,
     getActivityColorForCell,
     handleActivityChange,
@@ -648,8 +623,7 @@ const LifeGrid = () => {
     handleActivityHoursChange,
     handleActivityNameChange,
     handleAddActivity,
-    handleRemoveActivity,
-    calculateActivityPastFutureUnits
+    handleRemoveActivity
   ]);
 
   return (
