@@ -1,17 +1,73 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import * as d3 from 'd3';
+import * as htmlToImage from 'html-to-image';
 import { useLifeGridCalculations } from '../hooks/useLifeGridCalculations';
 
 const LifeGrid = () => {
   const svgRef = useRef(null);
+  const containerRef = useRef(null);
   const [timeUnit, setTimeUnit] = useState('years');
   const [birthDate, setBirthDate] = useState('1978-01-01');
   const [lifespan, setLifespan] = useState(80);
   const [windowWidth, setWindowWidth] = useState(window.innerWidth);
   const [activities, setActivities] = useState([
-    { id: 1, name: 'Sleeping', hoursPerDay: 8, color: '#000000', spent: false, future: false },
+    { id: 1, name: 'Sleeping', hoursPerDay: 8, color: '#3B82F6', spent: false, future: false },
     { id: 2, name: 'Eating', hoursPerDay: 2, color: '#22C55E', spent: false, future: false }
   ]);
+
+  const [currentShape, setCurrentShape] = useState('square');  
+
+  const shapes = {
+    heart: (scale) => `
+      M ${0 * scale},${7 * scale}
+      C ${0 * scale},${5 * scale} ${-1 * scale},${2 * scale} ${-4 * scale},${2 * scale}
+      C ${-8 * scale},${2 * scale} ${-10 * scale},${5 * scale} ${-10 * scale},${8 * scale}
+      C ${-10 * scale},${12 * scale} ${-6 * scale},${15 * scale} ${0 * scale},${20 * scale}
+      C ${6 * scale},${15 * scale} ${10 * scale},${12 * scale} ${10 * scale},${8 * scale}
+      C ${10 * scale},${5 * scale} ${8 * scale},${2 * scale} ${4 * scale},${2 * scale}
+      C ${1 * scale},${2 * scale} ${0 * scale},${5 * scale} ${0 * scale},${7 * scale}
+      Z`,
+    leaf: (scale) => `
+      M ${0 * scale},${0 * scale}
+      C ${-8 * scale},${4 * scale} ${-8 * scale},${16 * scale} ${0 * scale},${20 * scale}
+      C ${8 * scale},${16 * scale} ${8 * scale},${4 * scale} ${0 * scale},${0 * scale}
+      M ${0 * scale},${0 * scale}
+      L ${0 * scale},${20 * scale}
+      Z`,
+    person: (scale) => `
+      M ${0 * scale},${-8 * scale}
+      a ${4 * scale},${4 * scale} 0 1,0 ${0.1 * scale},${0}
+      a ${4 * scale},${4 * scale} 0 1,0 ${-0.1 * scale},${0}
+      M ${-6 * scale},${20 * scale}
+      C ${-6 * scale},${8 * scale} ${6 * scale},${8 * scale} ${6 * scale},${20 * scale}
+      Z`,
+    square: (scale) => `
+      M ${-10 * scale},${0 * scale}
+      L ${10 * scale},${0 * scale}
+      L ${10 * scale},${20 * scale}
+      L ${-10 * scale},${20 * scale}
+      Z`,
+    circle: (scale) => `
+      M ${0 * scale},${0 * scale}
+      m ${-10 * scale},${10 * scale}
+      a ${10 * scale},${10 * scale} 0 1,0 ${20 * scale},${0}
+      a ${10 * scale},${10 * scale} 0 1,0 ${-20 * scale},${0}
+      Z`
+  };
+
+  const cycleShape = () => {
+    const shapeOrder = ['heart', 'leaf', 'person', 'square', 'circle'];
+    const currentIndex = shapeOrder.indexOf(currentShape);
+    const nextIndex = (currentIndex + 1) % shapeOrder.length;
+    setCurrentShape(shapeOrder[nextIndex]);
+  };
+
+  const cycleTimeUnit = () => {
+    const units = ['hours', 'days', 'weeks', 'months', 'years'];
+    const currentIndex = units.indexOf(timeUnit);
+    const nextIndex = (currentIndex + 1) % units.length;
+    setTimeUnit(units[nextIndex]);
+  };
 
   const { 
     calculateBaseProgress, 
@@ -120,9 +176,30 @@ const LifeGrid = () => {
     setActivities(prevActivities => prevActivities.filter(activity => activity.id !== id));
   }, []);
 
+  const handleShare = useCallback(() => {
+    if (!containerRef.current) return;
+    
+    htmlToImage.toPng(containerRef.current, {
+      quality: 1.0,
+      backgroundColor: 'white',
+      style: {
+        transform: 'none'
+      }
+    })
+    .then(dataUrl => {
+      const link = document.createElement('a');
+      link.download = 'your-life-timeline.png';
+      link.href = dataUrl;
+      link.click();
+    })
+    .catch(error => {
+      console.error('Error creating image:', error);
+    });
+  }, []);
+
   useEffect(() => {
     if (!svgRef.current) return;
-
+    
     const svg = d3.select(svgRef.current);
     svg.selectAll('*').remove();
 
@@ -141,17 +218,20 @@ const LifeGrid = () => {
       .attr('transform', `translate(${gridLeftOffset}, ${(cellSize + padding) * 3})`);
 
     // Create cells within the grid group
-    gridGroup.selectAll('rect.cell')
+    gridGroup.selectAll('path.cell')
       .data(Array(units).fill(0))
       .enter()
-      .append('rect')
+      .append('path')
       .attr('class', 'cell')
-      .attr('x', (d, i) => (i % unitsPerRow) * (cellSize + padding))
-      .attr('y', (d, i) => Math.floor(i / unitsPerRow) * (cellSize + padding))
-      .attr('width', cellSize)
-      .attr('height', cellSize)
-      .attr('rx', 2)
-      .attr('ry', 2)
+      .attr('transform', (d, i) => {
+        const x = (i % unitsPerRow) * (cellSize + padding);
+        const y = Math.floor(i / unitsPerRow) * (cellSize + padding);
+        return `translate(${x + cellSize/2}, ${y + cellSize/2})`;
+      })
+      .attr('d', () => {
+        const scale = cellSize / 20;
+        return shapes[currentShape](scale);
+      })
       .attr('fill', (d, i) => {
         const isLived = i < progress.lived;
         return getActivityColorForCell(i, isLived);
@@ -162,13 +242,14 @@ const LifeGrid = () => {
       .on('mouseover', function(event, d) {
         const index = d3.select(this).attr('data-index');
         const cell = d3.select(this);
-        const bbox = this.getBBox();
-        const centerX = bbox.x + bbox.width/2;
-        const centerY = bbox.y + bbox.height/2;
         
         cell.transition()
           .duration(200)
-          .attr('transform', `translate(${centerX},${centerY}) scale(1.5) translate(${-centerX},${-centerY})`);
+          .attr('transform', (d, i) => {
+            const x = (index % unitsPerRow) * (cellSize + padding);
+            const y = Math.floor(index / unitsPerRow) * (cellSize + padding);
+            return `translate(${x + cellSize/2}, ${y + cellSize/2}) scale(1.2)`;
+          });
         
         gridGroup.append('text')
           .attr('class', 'cell-number')
@@ -181,10 +262,15 @@ const LifeGrid = () => {
           .text(Number(index) + 1);
       })
       .on('mouseout', function() {
+        const index = d3.select(this).attr('data-index');
         d3.select(this)
           .transition()
           .duration(200)
-          .attr('transform', 'scale(1)');
+          .attr('transform', (d, i) => {
+            const x = (index % unitsPerRow) * (cellSize + padding);
+            const y = Math.floor(index / unitsPerRow) * (cellSize + padding);
+            return `translate(${x + cellSize/2}, ${y + cellSize/2})`;
+          });
         
         gridGroup.selectAll('.cell-number').remove();
       });
@@ -194,7 +280,8 @@ const LifeGrid = () => {
     const headerHeight = 40;
     const activityHeight = 65;
     const verticalPadding = 30;
-    const statsHeight = headerHeight + (activities.length * activityHeight) + verticalPadding;
+    const buttonHeight = 50;  // Space for button and padding
+    const statsHeight = headerHeight + (activities.length * activityHeight) + buttonHeight + verticalPadding;
 
     // Add statistics panel using full width
     const stats = svg.append('g')
@@ -203,7 +290,7 @@ const LifeGrid = () => {
 
     // Add background for stats using full width
     stats.append('rect')
-      .attr('width', svgWidth - 40)  // Full width minus margins
+      .attr('width', svgWidth - 40)
       .attr('height', statsHeight)
       .attr('fill', '#F3F4F6')
       .attr('rx', 8)
@@ -213,17 +300,17 @@ const LifeGrid = () => {
     const middleX = (svgWidth - 40) / 2;
     stats.append('line')
       .attr('x1', middleX)
-      .attr('y1', 15)
+      .attr('y1', 20)
       .attr('x2', middleX)
-      .attr('y2', statsHeight - 15)
-      .attr('stroke', '#E5E7EB')
-      .attr('stroke-width', 2);
+      .attr('y2', statsHeight - 20)
+      .attr('stroke', '#D1D5DB')
+      .attr('stroke-width', 1);
 
-    // Add life statistics section
+    // Add content group for stats
     const lifeStatsContent = stats.append('g')
       .attr('transform', 'translate(30, 25)');
 
-    // Restore Life Statistics title
+    // Add "Life Statistics" title
     lifeStatsContent.append('text')
       .style('font-size', '16px')
       .style('font-weight', 'bold')
@@ -319,20 +406,20 @@ const LifeGrid = () => {
     }
     
     // Title text with different styles for each part
-    const titleGroup = progressGroup.append('g')
+    const progressTitleGroup = progressGroup.append('g')
       .attr('transform', 'translate(0, -8)');
 
     // Total units in bold
-    titleGroup.append('text')
+    progressTitleGroup.append('text')
       .style('font-size', '14px')
       .style('font-weight', 'bold')
       .text(`${totalUnits} ${timeUnit} `);
 
     // Get the width of the first text element
-    const unitsTextWidth = titleGroup.select('text').node().getBBox().width;
+    const unitsTextWidth = progressTitleGroup.select('text').node().getBBox().width;
 
     // Percentages in normal weight
-    titleGroup.append('text')
+    progressTitleGroup.append('text')
       .attr('x', unitsTextWidth)
       .style('font-size', '14px')
       .text(`(${progress.progress}% complete)`);
@@ -353,6 +440,54 @@ const LifeGrid = () => {
 
     // Add activity segments if any
     if (totalPastHours > 0 || totalFutureHours > 0) {
+      // Create tooltip
+      const tooltip = progressGroup.append('g')
+        .attr('class', 'tooltip')
+        .style('opacity', 0)
+        .style('pointer-events', 'none');
+
+      tooltip.append('rect')
+        .attr('rx', 4)
+        .attr('ry', 4)
+        .attr('fill', '#1F2937')
+        .attr('width', 0)
+        .attr('height', 0);
+
+      tooltip.append('text')
+        .style('font-size', '12px')
+        .style('fill', 'white');
+
+      const showTooltip = (event, activity, isPast) => {
+        const percentage = (activity.hoursPerDay / 24 * 100).toFixed(1);
+        const text = `${activity.name}: ${percentage}% ${isPast ? '(Past)' : '(Future)'}`;
+        
+        const tooltipText = tooltip.select('text')
+          .attr('x', 8)
+          .attr('y', 15)
+          .text(text);
+
+        const bbox = tooltipText.node().getBBox();
+        
+        tooltip.select('rect')
+          .attr('width', bbox.width + 16)
+          .attr('height', bbox.height + 10);
+
+        const [mouseX, mouseY] = d3.pointer(event, progressGroup.node());
+        
+        tooltip
+          .attr('transform', `translate(${mouseX - (bbox.width + 16)/2}, ${mouseY - 35})`)
+          .transition()
+          .duration(100)
+          .style('opacity', 1);
+      };
+
+      const hideTooltip = () => {
+        tooltip
+          .transition()
+          .duration(100)
+          .style('opacity', 0);
+      };
+
       // Past activities (blue to activity color)
       let currentX = 0;
       pastActivities.forEach(activity => {
@@ -363,7 +498,15 @@ const LifeGrid = () => {
           .attr('width', width)
           .attr('height', progressBarHeight)
           .attr('fill', activity.color)
-          .attr('rx', 6);
+          .attr('rx', 6)
+          .style('cursor', 'pointer')
+          .on('mouseover', (event) => showTooltip(event, activity, true))
+          .on('mousemove', (event) => {
+            const [mouseX, mouseY] = d3.pointer(event, progressGroup.node());
+            const tooltipWidth = tooltip.select('rect').attr('width');
+            tooltip.attr('transform', `translate(${mouseX - tooltipWidth/2}, ${mouseY - 35})`);
+          })
+          .on('mouseout', hideTooltip);
         currentX += width;
       });
 
@@ -377,7 +520,15 @@ const LifeGrid = () => {
           .attr('width', width)
           .attr('height', progressBarHeight)
           .attr('fill', activity.color)
-          .attr('rx', 6);
+          .attr('rx', 6)
+          .style('cursor', 'pointer')
+          .on('mouseover', (event) => showTooltip(event, activity, false))
+          .on('mousemove', (event) => {
+            const [mouseX, mouseY] = d3.pointer(event, progressGroup.node());
+            const tooltipWidth = tooltip.select('rect').attr('width');
+            tooltip.attr('transform', `translate(${mouseX - tooltipWidth/2}, ${mouseY - 35})`);
+          })
+          .on('mouseout', hideTooltip);
         currentX += width;
       });
     }
@@ -593,12 +744,13 @@ const LifeGrid = () => {
       }
     });
 
-    // Add "New Activity" button after the activities list
-    const addButton = activityList.append('g')
-      .attr('transform', `translate(0, ${activities.length * 65})`)
+    // Add "New Activity" button under the activities but inside the gray section
+    const addButton = activitiesSection.append('g')
+      .attr('transform', `translate(30, ${40 + activities.length * 65 + 25})`)  // 30px left padding to match activities
       .style('cursor', 'pointer')
       .on('click', handleAddActivity);
 
+    // Button background
     addButton.append('rect')
       .attr('width', 120)
       .attr('height', 32)
@@ -606,13 +758,23 @@ const LifeGrid = () => {
       .attr('rx', 6)
       .attr('ry', 6);
 
+    // Button text
     addButton.append('text')
       .attr('x', 60)
-      .attr('y', 21)
+      .attr('y', 20)
       .attr('text-anchor', 'middle')
+      .attr('dominant-baseline', 'middle')
       .style('font-size', '14px')
       .style('fill', 'white')
       .text('New Activity');
+
+    // Add hover effect
+    addButton.on('mouseover', function() {
+      d3.select(this).select('rect').attr('fill', '#2563EB');
+    })
+    .on('mouseout', function() {
+      d3.select(this).select('rect').attr('fill', '#3B82F6');
+    });
 
     // Update SVG height to accommodate everything
     svg.attr('width', svgWidth)
@@ -635,8 +797,27 @@ const LifeGrid = () => {
     handleRemoveActivity
   ]);
 
+  useEffect(() => {
+    if (!svgRef.current) return;
+    
+    const svg = d3.select(svgRef.current);
+    const cells = svg.selectAll('path.cell');
+    
+    // Get current cellSize from calculateTimeUnits
+    const { cellSize } = calculateTimeUnits();
+    
+    cells.attr('d', () => {
+      const scale = cellSize / 20;
+      return shapes[currentShape](scale);
+    });
+
+    // Update shape selector icon
+    svg.select('.shape-selector path')
+      .attr('d', shapes[currentShape](1.2));
+  }, [currentShape, shapes, calculateTimeUnits]);
+
   return (
-    <div className="flex flex-col items-center">
+    <div ref={containerRef} className="flex flex-col items-center">
       <div className="w-full px-4">
         <div className="flex flex-col sm:flex-row items-center justify-between w-full mb-0">
           <h1 className="text-3xl font-bold text-gray-800">Your Life</h1>
@@ -675,6 +856,31 @@ const LifeGrid = () => {
                 <option value="years">Years</option>
               </select>
             </div>
+            <div className="flex items-center gap-2 text-sm">
+              <label className="font-semibold">as:</label>
+              <div 
+                onClick={cycleShape}
+                className="cursor-pointer"
+                style={{ display: 'inline-block', width: '24px', height: '24px' }}
+              >
+                <svg width="24" height="24" viewBox="-12 -12 24 24">
+                  <path
+                    d={shapes[currentShape](0.8)}
+                    fill="#3B82F6"
+                    transform="translate(0, 2)"
+                  />
+                </svg>
+              </div>
+            </div>
+            <button 
+              className="flex items-center gap-1 px-3 py-1 border rounded-md text-gray-700 hover:bg-gray-50"
+              onClick={handleShare}
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
+                <path d="M15 8a3 3 0 10-2.977-2.63l-4.94 2.47a3 3 0 100 4.319l4.94 2.47a3 3 0 10.895-1.789l-4.94-2.47a3.027 3.027 0 000-.74l4.94-2.47C13.456 7.68 14.19 8 15 8z" />
+              </svg>
+              Share
+            </button>
           </div>
         </div>
         <div className="flex justify-center items-center mt-0">
