@@ -130,6 +130,9 @@ const LifeGrid = () => {
     const { units, unitsPerRow, rows, cellSize, padding } = calculateTimeUnits();
     const gridWidth = (cellSize + padding) * unitsPerRow;
     
+    // Calculate progress once at the start
+    const progress = calculateProgress();
+    
     // Calculate left offset to center the grid
     const gridLeftOffset = Math.max(0, (svgWidth - gridWidth) / 2);
 
@@ -226,10 +229,24 @@ const LifeGrid = () => {
       .style('font-weight', 'bold')
       .text('Life Statistics');
 
+    // Calculate reduced remaining years based on future activities
+    const pastActivities = activities.filter(a => a.spent);
+    const futureActivities = activities.filter(a => a.future);
+    const totalPastHours = pastActivities.reduce((sum, a) => sum + a.hoursPerDay, 0);
+    const totalFutureHours = futureActivities.reduce((sum, a) => sum + a.hoursPerDay, 0);
+    
+    // Calculate how many years are used by future activities
+    const futureYearsUsed = totalFutureHours > 0 ? 
+      Math.ceil((progress.remaining * totalFutureHours / 24) * 10) / 10 : 0;
+    
+    // Update both lived and remaining years
+    const yearsRemaining = progress.remaining - futureYearsUsed;
+    const yearsLived = progress.lived + futureYearsUsed;
+
     // Add life progress stats in two columns with more spacing
     const lifeStats = [
-      { color: '#3B82F6', text: `${progress.lived} ${timeUnit} lived` },
-      { color: '#E5E7EB', text: `${progress.remaining} ${timeUnit} remaining` }
+      { color: '#3B82F6', text: `${yearsLived.toFixed(1)} ${timeUnit} lived` },
+      { color: '#E5E7EB', text: `${yearsRemaining.toFixed(1)} ${timeUnit} remaining` }
     ];
 
     // Display stats in two columns with more spacing
@@ -263,6 +280,63 @@ const LifeGrid = () => {
     const progressGroup = lifeStatsContent.append('g')
       .attr('transform', `translate(0, ${progressBarY})`);
 
+    // Progress percentage labels
+    const remainingPercentage = 100 - progress.progress;
+    const totalUnits = Math.ceil(progress.total);
+    
+    // Calculate adjusted remaining percentage if there are future activities
+    let adjustedRemainingPercentage = remainingPercentage;
+    if (totalFutureHours > 0) {
+      // Get the conversion factor based on time unit
+      let timeUnitInDays;
+      switch (timeUnit) {
+        case 'hours':
+          timeUnitInDays = 1/24;
+          break;
+        case 'days':
+          timeUnitInDays = 1;
+          break;
+        case 'weeks':
+          timeUnitInDays = 7;
+          break;
+        case 'months':
+          timeUnitInDays = 30;
+          break;
+        default: // years
+          timeUnitInDays = 365;
+      }
+
+      // Calculate extra units needed based on current time unit
+      const unitsRemaining = progress.remaining;
+      const extraUnitsNeeded = Math.ceil(unitsRemaining * (totalFutureHours / 24));
+      const totalUnitsWithExtra = progress.total + (extraUnitsNeeded / timeUnitInDays);
+      
+      // Calculate the percentage that future activities take up
+      const futureActivityPercentage = (extraUnitsNeeded / totalUnitsWithExtra) * 100;
+      
+      // Subtract from remaining percentage
+      adjustedRemainingPercentage = Math.max(0, remainingPercentage - futureActivityPercentage);
+    }
+    
+    // Title text with different styles for each part
+    const titleGroup = progressGroup.append('g')
+      .attr('transform', 'translate(0, -8)');
+
+    // Total units in bold
+    titleGroup.append('text')
+      .style('font-size', '14px')
+      .style('font-weight', 'bold')
+      .text(`${totalUnits} ${timeUnit} `);
+
+    // Get the width of the first text element
+    const unitsTextWidth = titleGroup.select('text').node().getBBox().width;
+
+    // Percentages in normal weight
+    titleGroup.append('text')
+      .attr('x', unitsTextWidth)
+      .style('font-size', '14px')
+      .text(`(${progress.progress}% complete)`);
+
     // Progress bar background
     progressGroup.append('rect')
       .attr('width', progressBarWidth)
@@ -270,108 +344,43 @@ const LifeGrid = () => {
       .attr('fill', '#E5E7EB')
       .attr('rx', 6);
 
-    // Calculate total hours for past and future activities
-    const pastActivities = activities.filter(a => a.spent);
-    const futureActivities = activities.filter(a => a.future);
-    const totalPastHours = pastActivities.reduce((sum, a) => sum + a.hoursPerDay, 0);
-    const totalFutureHours = futureActivities.reduce((sum, a) => sum + a.hoursPerDay, 0);
+    // Add blue progress bar
+    progressGroup.append('rect')
+      .attr('width', progressBarWidth * (progress.progress / 100))
+      .attr('height', progressBarHeight)
+      .attr('fill', '#3B82F6')
+      .attr('rx', 6);
 
-    // Add blue progress bar for unallocated lived time
-    if (totalPastHours < 24) {
-      progressGroup.append('rect')
-        .attr('width', progressBarWidth * (progress.progress / 100))
-        .attr('height', progressBarHeight)
-        .attr('fill', '#3B82F6')
-        .attr('rx', 6);
-    }
-    
-    // Function to create activity segment
-    const createActivitySegment = (activity, start, end, isLived) => {
-      const segmentWidth = (end - start) * progressBarWidth;
-      if (segmentWidth > 0) {
-        const segment = progressGroup.append('rect')
-          .attr('x', start * progressBarWidth)
-          .attr('width', segmentWidth)
+    // Add activity segments if any
+    if (totalPastHours > 0 || totalFutureHours > 0) {
+      // Past activities (blue to activity color)
+      let currentX = 0;
+      pastActivities.forEach(activity => {
+        const proportion = activity.hoursPerDay / 24;
+        const width = progressBarWidth * (progress.progress / 100) * proportion;
+        progressGroup.append('rect')
+          .attr('x', currentX)
+          .attr('width', width)
           .attr('height', progressBarHeight)
           .attr('fill', activity.color)
-          .attr('rx', 6)
-          .style('cursor', 'pointer');
+          .attr('rx', 6);
+        currentX += width;
+      });
 
-        // Create tooltip group
-        const tooltip = progressGroup.append('g')
-          .attr('class', 'tooltip')
-          .style('opacity', 0)
-          .attr('pointer-events', 'none');
-
-        tooltip.append('rect')
-          .attr('rx', 4)
-          .attr('ry', 4)
-          .attr('fill', '#1F2937')
-          .attr('padding', 8);
-
-        const timeType = isLived ? 'Past' : 'Future';
-        const tooltipText = tooltip.append('text')
-          .attr('fill', 'white')
-          .attr('text-anchor', 'middle')
-          .attr('dy', '0.32em')
-          .style('font-size', '12px')
-          .text(`${activity.name} - ${timeType} (${Math.round(activity.hoursPerDay / 24 * 100)}%)`);
-
-        // Size the background rectangle based on text
-        const textBBox = tooltipText.node().getBBox();
-        tooltip.select('rect')
-          .attr('width', textBBox.width + 16)
-          .attr('height', textBBox.height + 8)
-          .attr('x', -textBBox.width/2 - 8)
-          .attr('y', -textBBox.height/2 - 4);
-
-        // Add hover interactions
-        segment
-          .on('mouseover', function(event) {
-            tooltip
-              .attr('transform', `translate(${start * progressBarWidth + segmentWidth/2}, -10)`)
-              .transition()
-              .duration(200)
-              .style('opacity', 1);
-          })
-          .on('mouseout', function() {
-            tooltip
-              .transition()
-              .duration(200)
-              .style('opacity', 0);
-          });
-      }
-    };
-
-    // Add past activity segments
-    let currentX = 0;
-    const livedProportion = progress.progress / 100;
-    
-    pastActivities.forEach(activity => {
-      const proportion = activity.hoursPerDay / Math.max(24, totalPastHours);
-      const segmentWidth = proportion * livedProportion;
-      createActivitySegment(activity, currentX, currentX + segmentWidth, true);
-      currentX += segmentWidth;
-    });
-
-    // Add future activity segments
-    currentX = progress.progress / 100;
-    const remainingProportion = (100 - progress.progress) / 100;
-    
-    futureActivities.forEach(activity => {
-      const proportion = activity.hoursPerDay / Math.max(24, totalFutureHours);
-      const segmentWidth = proportion * remainingProportion;
-      createActivitySegment(activity, currentX, currentX + segmentWidth, false);
-      currentX += segmentWidth;
-    });
-
-    // Progress text
-    progressGroup.append('text')
-      .attr('x', progressBarWidth / 2)
-      .attr('y', -8)
-      .attr('text-anchor', 'middle')
-      .style('font-size', '14px')
-      .text(`${progress.total} ${timeUnit} total (${progress.progress}% complete)`);
+      // Future activities (gray to activity color)
+      currentX = progressBarWidth * (progress.progress / 100);
+      futureActivities.forEach(activity => {
+        const proportion = activity.hoursPerDay / 24;
+        const width = progressBarWidth * ((100 - progress.progress) / 100) * proportion;
+        progressGroup.append('rect')
+          .attr('x', currentX)
+          .attr('width', width)
+          .attr('height', progressBarHeight)
+          .attr('fill', activity.color)
+          .attr('rx', 6);
+        currentX += width;
+      });
+    }
 
     // Add activities section
     const activitiesSection = stats.append('g')
@@ -506,7 +515,7 @@ const LifeGrid = () => {
         .attr('y', 32)
         .style('font-size', '12px')
         .style('fill', '#6B7280')
-        .text(`Total: ${calculateActivityPastFutureUnits(activity).total} ${timeUnit}`);
+        .text(`Total: ${calculateActivityPastFutureUnits(activity).total.toFixed(1)} ${timeUnit}`);
 
       // Past/Future toggles with units
       const toggleGroup = activityGroup.append('g')
@@ -534,7 +543,7 @@ const LifeGrid = () => {
         .attr('x', 70)
         .attr('y', 12)
         .style('font-size', '12px')
-        .text(`${calculateActivityPastFutureUnits(activity).past} ${timeUnit}`);
+        .text(`${calculateActivityPastFutureUnits(activity).past.toFixed(1)} ${timeUnit}`);
 
       // Future toggle and units
       const futureToggle = toggleGroup.append('g')
@@ -558,7 +567,7 @@ const LifeGrid = () => {
         .attr('x', 70)
         .attr('y', 12)
         .style('font-size', '12px')
-        .text(`${calculateActivityPastFutureUnits(activity).future} ${timeUnit}`);
+        .text(`${calculateActivityPastFutureUnits(activity).future.toFixed(1)} ${timeUnit}`);
 
       // Delete button for non-default activities
       if (activity.id > 2) {

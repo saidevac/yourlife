@@ -76,10 +76,13 @@ export const useLifeGridCalculations = (birthDate, lifespan, activities, timeUni
     const hoursPerDay = activity.hoursPerDay;
     const proportionOfDay = Math.min(1, hoursPerDay / 24);
     
+    const past = Math.ceil(progress.lived * proportionOfDay * 10) / 10;
+    const future = Math.ceil(progress.remaining * proportionOfDay * 10) / 10;
+    
     return {
-      past: Math.floor(progress.lived * proportionOfDay),
-      future: Math.floor(progress.remaining * proportionOfDay),
-      total: Math.floor(progress.total * proportionOfDay)
+      past,
+      future,
+      total: past + future
     };
   }, [calculateProgress]);
 
