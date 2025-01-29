@@ -1,117 +1,122 @@
 import { useCallback } from 'react';
 
-export const useLifeGridCalculations = (birthDate, lifespan, activities, timeUnit, windowWidth) => {
+export const useLifeGridCalculations = (birthDate, lifespan, timeUnit, activities, windowWidth) => {
   const calculateBaseProgress = useCallback(() => {
-    const birthDateTime = new Date(birthDate);
-    const now = new Date('2025-01-28T18:08:03+11:00');
-    const lived = Math.floor((now - birthDateTime) / (1000 * 60 * 60 * 24));
-    const totalDays = lifespan * 365;
-
-    // Calculate future activities impact
-    const futureActivities = activities.filter(a => a.future);
-    const totalFutureHours = futureActivities.reduce((sum, a) => sum + a.hoursPerDay, 0);
-    const extraDays = totalFutureHours > 24 ? Math.ceil((totalDays - lived) * (totalFutureHours / 24 - 1)) : 0;
-    const adjustedTotalDays = totalDays + extraDays;
-
-    return {
-      lived,
-      totalDays: adjustedTotalDays,
-      hasExtraDays: extraDays > 0
-    };
-  }, [birthDate, lifespan, activities]);
-
-  const calculateProgress = useCallback(() => {
-    const { lived, totalDays, hasExtraDays } = calculateBaseProgress();
-    const baseDays = lifespan * 365;
-
-    let units;
+    const today = new Date();
+    const birth = new Date(birthDate);
+    
+    let lived = 0;
+    let remaining = 0;
+    let total = 0;
+    
     switch (timeUnit) {
       case 'hours':
-        units = {
-          lived: lived * 24,
-          remaining: (totalDays - lived) * 24,
-          total: totalDays * 24
-        };
+        lived = Math.floor((today - birth) / (1000 * 60 * 60));
+        total = lifespan * 365 * 24;
+        remaining = total - lived;
         break;
       case 'days':
-        units = {
-          lived,
-          remaining: totalDays - lived,
-          total: totalDays
-        };
+        lived = Math.floor((today - birth) / (1000 * 60 * 60 * 24));
+        total = lifespan * 365;
+        remaining = total - lived;
         break;
       case 'weeks':
-        units = {
-          lived: Math.floor(lived / 7),
-          remaining: Math.ceil((totalDays - lived) / 7),
-          total: Math.ceil(totalDays / 7)
-        };
+        lived = Math.floor((today - birth) / (1000 * 60 * 60 * 24 * 7));
+        total = Math.ceil(lifespan * 52.143);
+        remaining = total - lived;
         break;
       case 'months':
-        units = {
-          lived: Math.floor(lived / 30),
-          remaining: Math.ceil((totalDays - lived) / 30),
-          total: Math.ceil(totalDays / 30)
-        };
+        const monthDiff = (today.getFullYear() - birth.getFullYear()) * 12 + today.getMonth() - birth.getMonth();
+        lived = monthDiff;
+        total = lifespan * 12;
+        remaining = total - lived;
         break;
       default: // years
-        units = {
-          lived: Math.floor(lived / 365),
-          remaining: Math.ceil((totalDays - lived) / 365),
-          total: Math.ceil(totalDays / 365)
-        };
+        lived = today.getFullYear() - birth.getFullYear();
+        total = lifespan;
+        remaining = total - lived;
     }
-
-    // Calculate progress based on original lifespan if no extra days
-    const progress = Math.min(100, Math.round((lived / (hasExtraDays ? totalDays : baseDays)) * 100));
-
+    
     return {
-      ...units,
+      lived: Math.max(0, lived),
+      remaining: Math.max(0, remaining),
+      total
+    };
+  }, [birthDate, lifespan, timeUnit]);
+
+  const calculateProgress = useCallback(() => {
+    const { lived, remaining, total } = calculateBaseProgress();
+    const progress = (lived / total) * 100;
+
+    // Ensure activities is an array
+    const activityList = Array.isArray(activities) ? activities : [];
+    
+    // Calculate extra time needed for activities
+    const pastActivities = activityList.filter(a => a.spent);
+    const futureActivities = activityList.filter(a => a.future);
+    
+    const totalPastHours = pastActivities.reduce((sum, a) => sum + (a.hoursPerDay || 0), 0);
+    const totalFutureHours = futureActivities.reduce((sum, a) => sum + (a.hoursPerDay || 0), 0);
+    
+    // Adjust lived and remaining based on activities
+    let adjustedLived = lived;
+    let adjustedRemaining = remaining;
+    
+    if (totalPastHours > 0) {
+      adjustedLived = lived * (totalPastHours / 24);
+    }
+    
+    if (totalFutureHours > 0) {
+      adjustedRemaining = remaining * (totalFutureHours / 24);
+    }
+    
+    return {
+      lived: adjustedLived,
+      remaining: adjustedRemaining,
+      total,
       progress
     };
-  }, [timeUnit, calculateBaseProgress, lifespan, activities]);
+  }, [calculateBaseProgress, activities]);
 
   const calculateActivityPastFutureUnits = useCallback((activity) => {
-    const progress = calculateProgress();
-    const hoursPerDay = activity.hoursPerDay;
-    const proportionOfDay = Math.min(1, hoursPerDay / 24);
+    const { total, lived, remaining } = calculateProgress();
     
-    const past = Math.ceil(progress.lived * proportionOfDay * 10) / 10;
-    const future = Math.ceil(progress.remaining * proportionOfDay * 10) / 10;
+    const hoursInDay = 24;
+    const proportion = (activity.hoursPerDay || 0) / hoursInDay;
     
     return {
-      past,
-      future,
-      total: past + future
+      total: total * proportion,
+      past: (activity.spent ? lived : 0) * proportion,
+      future: (activity.future ? remaining : 0) * proportion
     };
   }, [calculateProgress]);
 
-  const getActivityColorForCell = useCallback((cellIndex, isLived) => {
-    const progress = calculateProgress();
+  const getActivityColorForCell = useCallback((index, isLived) => {
+    if (!isLived) return '#E5E7EB';
+
+    // Ensure activities is an array
+    const activityList = Array.isArray(activities) ? activities : [];
     
-    if (isLived && cellIndex >= progress.lived) return '#E5E7EB';
-    if (!isLived && cellIndex < progress.lived) return '#3B82F6';
-    
-    const activeActivities = activities.filter(activity => 
-      (isLived && activity.spent) || (!isLived && activity.future)
-    );
-    
-    let currentPosition = isLived ? 0 : progress.lived;
-    
-    for (const activity of activeActivities) {
-      const units = calculateActivityPastFutureUnits(activity);
-      const activityUnits = isLived ? units.past : units.future;
-      const endPosition = currentPosition + activityUnits;
-      
-      if (cellIndex >= currentPosition && cellIndex < endPosition) {
+    // Find past activities
+    const pastActivities = activityList.filter(a => a.spent);
+    if (pastActivities.length === 0) return '#3B82F6';
+
+    // Calculate total hours for past activities
+    const totalHours = pastActivities.reduce((sum, a) => sum + (a.hoursPerDay || 0), 0);
+    if (totalHours === 0) return '#3B82F6';
+
+    // Get random activity weighted by hours
+    const random = Math.random() * totalHours;
+    let sum = 0;
+    for (const activity of pastActivities) {
+      sum += activity.hoursPerDay || 0;
+      if (random <= sum) {
         return activity.color;
       }
-      
-      currentPosition = endPosition;
     }
-    
-    return isLived ? '#3B82F6' : '#E5E7EB';
-  }, [activities, calculateProgress, calculateActivityPastFutureUnits]);
+
+    return '#3B82F6';
+  }, [activities]);
 
   const calculateAge = useCallback(() => {
     const today = new Date();
@@ -135,22 +140,56 @@ export const useLifeGridCalculations = (birthDate, lifespan, activities, timeUni
   }, [birthDate, timeUnit]);
 
   const calculateTimeUnits = useCallback(() => {
-    const { total } = calculateProgress();
+    let units, unitsPerRow;
     
-    const maxUnitsPerRow = Math.floor((windowWidth * 0.95 - 40) / 30);
-    const unitsPerRow = Math.min(maxUnitsPerRow, total);
-    const rows = Math.ceil(total / unitsPerRow);
-    const cellSize = Math.min(25, (windowWidth * 0.95 - 40) / unitsPerRow - 5);
-    const padding = 5;
+    // Calculate base cell size for years view
+    const baseSize = Math.min(Math.max(windowWidth / 40, 20), 40);
+    
+    // Define size reduction factors for each time unit
+    const sizeFactors = {
+      'hours': 0.2,   // 20% of base size
+      'days': 0.3,    // 30% of base size
+      'weeks': 0.4,   // 40% of base size
+      'months': 0.6,  // 60% of base size
+      'years': 1      // 100% of base size (no reduction)
+    };
+    
+    // Calculate cell size based on time unit
+    const cellSize = Math.max(baseSize * sizeFactors[timeUnit], 8); // minimum 8px
+    const padding = cellSize * 0.2;
+
+    switch (timeUnit) {
+      case 'hours':
+        units = lifespan * 365 * 24;
+        unitsPerRow = 24; // 24 hours per day
+        break;
+      case 'days':
+        units = lifespan * 365;
+        unitsPerRow = 30; // Roughly a month per row
+        break;
+      case 'weeks':
+        units = Math.ceil(lifespan * 52.143);
+        unitsPerRow = 52; // One year per row
+        break;
+      case 'months':
+        units = lifespan * 12;
+        unitsPerRow = 36; // Three years per row
+        break;
+      default: // years
+        units = lifespan;
+        unitsPerRow = 10; // One decade per row
+    }
+
+    const rows = Math.ceil(units / unitsPerRow);
 
     return {
-      units: total,
+      units,
       unitsPerRow,
       rows,
       cellSize,
       padding
     };
-  }, [windowWidth, calculateProgress]);
+  }, [timeUnit, windowWidth, lifespan]);
 
   return {
     calculateBaseProgress,

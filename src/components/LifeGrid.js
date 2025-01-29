@@ -6,12 +6,12 @@ import { useLifeGridCalculations } from '../hooks/useLifeGridCalculations';
 const LifeGrid = () => {
   const svgRef = useRef(null);
   const containerRef = useRef(null);
-  const [timeUnit, setTimeUnit] = useState('years');
-  const [birthDate, setBirthDate] = useState('1978-01-01');
-  const [lifespan, setLifespan] = useState(80);
   const [windowWidth, setWindowWidth] = useState(window.innerWidth);
+  const [timeUnit, setTimeUnit] = useState('years');
+  const [birthDate, setBirthDate] = useState('1990-01-01');
+  const [lifespan, setLifespan] = useState(80);
   const [activities, setActivities] = useState([
-    { id: 1, name: 'Sleeping', hoursPerDay: 8, color: '#3B82F6', spent: false, future: false },
+    { id: 1, name: 'Sleep', hoursPerDay: 8, color: '#3B82F6', spent: true, future: true },
     { id: 2, name: 'Eating', hoursPerDay: 2, color: '#22C55E', spent: false, future: false }
   ]);
 
@@ -86,16 +86,16 @@ const LifeGrid = () => {
 
   const { 
     calculateBaseProgress, 
-    calculateProgress, 
-    calculateAge, 
-    calculateActivityPastFutureUnits, 
-    calculateTimeUnits, 
-    getActivityColorForCell 
+    calculateAge,
+    calculateActivityPastFutureUnits,
+    calculateProgress,
+    getActivityColorForCell,
+    calculateTimeUnits
   } = useLifeGridCalculations(
     birthDate,
     lifespan,
-    activities,
     timeUnit,
+    activities,
     windowWidth
   );
 
@@ -218,7 +218,6 @@ const LifeGrid = () => {
     const svg = d3.select(svgRef.current);
     svg.selectAll('*').remove();
 
-    const svgWidth = windowWidth * 0.95;
     const { units, unitsPerRow, rows, cellSize, padding } = calculateTimeUnits();
     const gridWidth = (cellSize + padding) * unitsPerRow;
     
@@ -226,7 +225,7 @@ const LifeGrid = () => {
     const progress = calculateProgress();
     
     // Calculate left offset to center the grid
-    const gridLeftOffset = Math.max(0, (svgWidth - gridWidth) / 2);
+    const gridLeftOffset = Math.max(0, (windowWidth * 0.95 - gridWidth) / 2);
 
     // Create a group for the grid
     const gridGroup = svg.append('g')
@@ -305,14 +304,14 @@ const LifeGrid = () => {
 
     // Add background for stats using full width
     stats.append('rect')
-      .attr('width', svgWidth - 40)
+      .attr('width', windowWidth * 0.95 - 40)
       .attr('height', statsHeight)
       .attr('fill', '#F3F4F6')
       .attr('rx', 8)
       .attr('ry', 8);
 
     // Add divider line in the middle
-    const middleX = (svgWidth - 40) / 2;
+    const middleX = (windowWidth * 0.95 - 40) / 2;
     stats.append('line')
       .attr('x1', middleX)
       .attr('y1', 20)
@@ -332,8 +331,8 @@ const LifeGrid = () => {
       .text('Life Statistics');
 
     // Calculate reduced remaining years based on future activities
-    const pastActivities = activities.filter(a => a.spent);
-    const futureActivities = activities.filter(a => a.future);
+    const pastActivities = Array.isArray(activities) ? activities.filter(a => a.spent) : [];
+    const futureActivities = Array.isArray(activities) ? activities.filter(a => a.future) : [];
     const totalPastHours = pastActivities.reduce((sum, a) => sum + a.hoursPerDay, 0);
     const totalFutureHours = futureActivities.reduce((sum, a) => sum + a.hoursPerDay, 0);
     
@@ -505,6 +504,7 @@ const LifeGrid = () => {
 
       // Past activities (blue to activity color)
       let currentX = 0;
+      const pastActivities = Array.isArray(activities) ? activities.filter(a => a.spent) : [];
       pastActivities.forEach(activity => {
         const proportion = activity.hoursPerDay / 24;
         const width = progressBarWidth * (progress.progress / 100) * proportion;
@@ -527,6 +527,7 @@ const LifeGrid = () => {
 
       // Future activities (gray to activity color)
       currentX = progressBarWidth * (progress.progress / 100);
+      const futureActivities = Array.isArray(activities) ? activities.filter(a => a.future) : [];
       futureActivities.forEach(activity => {
         const proportion = activity.hoursPerDay / 24;
         const width = progressBarWidth * ((100 - progress.progress) / 100) * proportion;
@@ -565,13 +566,14 @@ const LifeGrid = () => {
       .attr('transform', 'translate(0, 40)');
 
     // Add activities with full width
-    activities.forEach((activity, index) => {
+    const activitiesArray = Array.isArray(activities) ? activities : [];
+    activitiesArray.forEach((activity, index) => {
       const activityGroup = activityList.append('g')
         .attr('transform', `translate(0, ${index * 65})`);
 
       // Activity row background using full width
       activityGroup.append('rect')
-        .attr('width', (svgWidth - 40) / 2 - 60)  // Full half-width minus margins
+        .attr('width', (windowWidth * 0.95 - 40) / 2 - 60)  // Full half-width minus margins
         .attr('height', 60)
         .attr('fill', index % 2 === 0 ? '#FFFFFF' : '#F9FAFB')
         .attr('rx', 4)
@@ -686,7 +688,7 @@ const LifeGrid = () => {
       // Past/Future toggles with units
       const toggleGroup = activityGroup.append('g')
         .style('cursor', 'pointer')
-        .attr('transform', `translate(${(svgWidth - 40) / 4 + 20}, 12)`);
+        .attr('transform', `translate(${(windowWidth * 0.95 - 40) / 4 + 20}, 12)`);
 
       // Past toggle and units
       const spentToggle = toggleGroup.append('g')
@@ -738,7 +740,7 @@ const LifeGrid = () => {
       // Delete button for non-default activities
       if (activity.id > 2) {
         const deleteButton = activityGroup.append('g')
-          .attr('transform', `translate(${(svgWidth - 40) / 4 + 180}, 20)`)
+          .attr('transform', `translate(${(windowWidth * 0.95 - 40) / 4 + 180}, 20)`)
           .style('cursor', 'pointer')
           .on('click', () => handleRemoveActivity(activity.id));
 
@@ -761,7 +763,7 @@ const LifeGrid = () => {
 
     // Add "New Activity" button under the activities but inside the gray section
     const addButton = activitiesSection.append('g')
-      .attr('transform', `translate(30, ${40 + activities.length * 65 + 25})`)  // 30px left padding to match activities
+      .attr('transform', `translate(30, ${40 + activitiesArray.length * 65 + 25})`)  // 30px left padding to match activities
       .style('cursor', 'pointer')
       .on('click', handleAddActivity);
 
@@ -792,7 +794,7 @@ const LifeGrid = () => {
     });
 
     // Update SVG height to accommodate everything
-    svg.attr('width', svgWidth)
+    svg.attr('width', windowWidth * 0.95)
       .attr('height', statsY + statsHeight + (cellSize + padding) * 2);
 
   }, [
