@@ -27,20 +27,35 @@ const LifeGrid = () => {
       C ${10 * scale},${5 * scale} ${8 * scale},${2 * scale} ${4 * scale},${2 * scale}
       C ${1 * scale},${2 * scale} ${0 * scale},${5 * scale} ${0 * scale},${7 * scale}
       Z`,
-    leaf: (scale) => `
+    sun: (scale) => `
+      M ${0 * scale},${10 * scale}
+      m ${-6 * scale},${0 * scale}
+      a ${6 * scale},${6 * scale} 0 1,1 ${12 * scale},${0}
+      a ${6 * scale},${6 * scale} 0 1,1 ${-12 * scale},${0}
       M ${0 * scale},${0 * scale}
-      C ${-8 * scale},${4 * scale} ${-8 * scale},${16 * scale} ${0 * scale},${20 * scale}
-      C ${8 * scale},${16 * scale} ${8 * scale},${4 * scale} ${0 * scale},${0 * scale}
-      M ${0 * scale},${0 * scale}
+      L ${0 * scale},${4 * scale}
+      M ${0 * scale},${16 * scale}
       L ${0 * scale},${20 * scale}
+      M ${-8.5 * scale},${10 * scale}
+      L ${-12.5 * scale},${10 * scale}
+      M ${8.5 * scale},${10 * scale}
+      L ${12.5 * scale},${10 * scale}
+      M ${-6 * scale},${4 * scale}
+      L ${-9 * scale},${1 * scale}
+      M ${6 * scale},${4 * scale}
+      L ${9 * scale},${1 * scale}
+      M ${-6 * scale},${16 * scale}
+      L ${-9 * scale},${19 * scale}
+      M ${6 * scale},${16 * scale}
+      L ${9 * scale},${19 * scale}
       Z`,
     person: (scale) => `
-      M ${0 * scale},${-8 * scale}
-      a ${4 * scale},${4 * scale} 0 1,0 ${0.1 * scale},${0}
-      a ${4 * scale},${4 * scale} 0 1,0 ${-0.1 * scale},${0}
-      M ${-6 * scale},${20 * scale}
-      C ${-6 * scale},${8 * scale} ${6 * scale},${8 * scale} ${6 * scale},${20 * scale}
-      Z`,
+      M ${0 * scale},${0 * scale}
+      m ${-5 * scale},${0 * scale}
+      a ${5 * scale},${5 * scale} 0 1,1 ${10 * scale},${0}
+      a ${5 * scale},${5 * scale} 0 1,1 ${-10 * scale},${0}
+      M ${-8 * scale},${12 * scale}
+      A ${8 * scale},${8 * scale} 0 1,1 ${8 * scale},${12 * scale}`,
     square: (scale) => `
       M ${-10 * scale},${0 * scale}
       L ${10 * scale},${0 * scale}
@@ -56,7 +71,7 @@ const LifeGrid = () => {
   };
 
   const cycleShape = () => {
-    const shapeOrder = ['heart', 'leaf', 'person', 'square', 'circle'];
+    const shapeOrder = ['heart', 'sun', 'person', 'square', 'circle'];
     const currentIndex = shapeOrder.indexOf(currentShape);
     const nextIndex = (currentIndex + 1) % shapeOrder.length;
     setCurrentShape(shapeOrder[nextIndex]);
@@ -860,14 +875,21 @@ const LifeGrid = () => {
               <label className="font-semibold">as:</label>
               <div 
                 onClick={cycleShape}
-                className="cursor-pointer"
-                style={{ display: 'inline-block', width: '24px', height: '24px' }}
+                className="cursor-pointer p-1 border rounded-md shadow-sm hover:bg-gray-50"
+                style={{ 
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  width: '32px',
+                  height: '32px',
+                  position: 'relative',
+                  top: '1px'
+                }}
               >
-                <svg width="24" height="24" viewBox="-12 -12 24 24">
+                <svg width="20" height="20" viewBox="-12 -4 24 24">
                   <path
                     d={shapes[currentShape](0.8)}
                     fill="#3B82F6"
-                    transform="translate(0, 2)"
                   />
                 </svg>
               </div>
