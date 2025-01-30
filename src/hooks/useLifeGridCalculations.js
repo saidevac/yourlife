@@ -1,8 +1,20 @@
 import { useCallback } from 'react';
 
 export const useLifeGridCalculations = (birthDate, lifespan, timeUnit, activities, windowWidth) => {
+  // Helper function to calculate exact years between dates
+  const getExactYears = (start, end) => {
+    const yearDiff = end.getFullYear() - start.getFullYear();
+    const monthDiff = end.getMonth() - start.getMonth();
+    const dayDiff = end.getDate() - start.getDate();
+    
+    if (monthDiff < 0 || (monthDiff === 0 && dayDiff < 0)) {
+      return yearDiff - 1;
+    }
+    return yearDiff;
+  };
+
   const calculateBaseProgress = useCallback(() => {
-    const today = new Date();
+    const today = new Date('2025-01-30'); // Use the provided current time
     const birth = new Date(birthDate);
     
     let lived = 0;
@@ -26,13 +38,17 @@ export const useLifeGridCalculations = (birthDate, lifespan, timeUnit, activitie
         remaining = total - lived;
         break;
       case 'months':
-        const monthDiff = (today.getFullYear() - birth.getFullYear()) * 12 + today.getMonth() - birth.getMonth();
-        lived = monthDiff;
+        const yearDiff = today.getFullYear() - birth.getFullYear();
+        const monthDiff = today.getMonth() - birth.getMonth();
+        lived = yearDiff * 12 + monthDiff;
+        if (today.getDate() < birth.getDate()) {
+          lived--;
+        }
         total = lifespan * 12;
         remaining = total - lived;
         break;
       default: // years
-        lived = today.getFullYear() - birth.getFullYear();
+        lived = getExactYears(birth, today);
         total = lifespan;
         remaining = total - lived;
     }
@@ -48,35 +64,13 @@ export const useLifeGridCalculations = (birthDate, lifespan, timeUnit, activitie
     const { lived, remaining, total } = calculateBaseProgress();
     const progress = (lived / total) * 100;
 
-    // Ensure activities is an array
-    const activityList = Array.isArray(activities) ? activities : [];
-    
-    // Calculate extra time needed for activities
-    const pastActivities = activityList.filter(a => a.spent);
-    const futureActivities = activityList.filter(a => a.future);
-    
-    const totalPastHours = pastActivities.reduce((sum, a) => sum + (a.hoursPerDay || 0), 0);
-    const totalFutureHours = futureActivities.reduce((sum, a) => sum + (a.hoursPerDay || 0), 0);
-    
-    // Adjust lived and remaining based on activities
-    let adjustedLived = lived;
-    let adjustedRemaining = remaining;
-    
-    if (totalPastHours > 0) {
-      adjustedLived = lived * (totalPastHours / 24);
-    }
-    
-    if (totalFutureHours > 0) {
-      adjustedRemaining = remaining * (totalFutureHours / 24);
-    }
-    
     return {
-      lived: adjustedLived,
-      remaining: adjustedRemaining,
+      lived,
+      remaining,
       total,
       progress
     };
-  }, [calculateBaseProgress, activities]);
+  }, [calculateBaseProgress]);
 
   const calculateActivityPastFutureUnits = useCallback((activity) => {
     const { total, lived, remaining } = calculateProgress();
@@ -84,56 +78,145 @@ export const useLifeGridCalculations = (birthDate, lifespan, timeUnit, activitie
     const hoursInDay = 24;
     const proportion = (activity.hoursPerDay || 0) / hoursInDay;
     
+    // Always calculate both past and future units regardless of selection
     return {
       total: total * proportion,
-      past: (activity.spent ? lived : 0) * proportion,
-      future: (activity.future ? remaining : 0) * proportion
+      past: lived * proportion,
+      future: remaining * proportion
     };
   }, [calculateProgress]);
 
   const getActivityColorForCell = useCallback((index, isLived) => {
-    if (!isLived) return '#E5E7EB';
-
     // Ensure activities is an array
     const activityList = Array.isArray(activities) ? activities : [];
+    const progress = calculateProgress();
     
-    // Find past activities
-    const pastActivities = activityList.filter(a => a.spent);
-    if (pastActivities.length === 0) return '#3B82F6';
-
-    // Calculate total hours for past activities
-    const totalHours = pastActivities.reduce((sum, a) => sum + (a.hoursPerDay || 0), 0);
-    if (totalHours === 0) return '#3B82F6';
-
-    // Get random activity weighted by hours
-    const random = Math.random() * totalHours;
-    let sum = 0;
-    for (const activity of pastActivities) {
-      sum += activity.hoursPerDay || 0;
-      if (random <= sum) {
-        return activity.color;
+    if (isLived) {
+      // Handle past cells
+      const pastActivities = activityList.filter(a => a.spent);
+      
+      // Calculate total hours for past activities
+      const totalHours = pastActivities.reduce((sum, a) => sum + (a.hoursPerDay || 0), 0);
+      
+      // If there are selected past activities
+      if (pastActivities.length > 0 && totalHours > 0) {
+        // Calculate how many cells should be colored for activities
+        const hoursPerDay = 24;
+        const activityProportion = totalHours / hoursPerDay;
+        const activityCells = progress.lived * activityProportion;
+        const fullCells = Math.floor(activityCells);
+        
+        // Calculate which activity and what portion of it belongs in this cell
+        const cellHourStart = (index / progress.lived) * hoursPerDay;
+        const cellHourEnd = ((index + 1) / progress.lived) * hoursPerDay;
+        
+        let currentHour = 0;
+        let gradientStops = [];
+        
+        // Find which activities fall within this cell's hour range
+        for (const activity of pastActivities) {
+          const activityStart = currentHour;
+          const activityEnd = currentHour + (activity.hoursPerDay || 0);
+          
+          // Check if this activity overlaps with the current cell
+          if (activityEnd > cellHourStart && activityStart < cellHourEnd) {
+            const startPercent = Math.max(0, (activityStart - cellHourStart) / (cellHourEnd - cellHourStart) * 100);
+            const endPercent = Math.min(100, (activityEnd - cellHourStart) / (cellHourEnd - cellHourStart) * 100);
+            
+            gradientStops.push({
+              color: activity.color,
+              startPercent,
+              endPercent
+            });
+          }
+          
+          currentHour = activityEnd;
+        }
+        
+        // If we have gradient stops, return them
+        if (gradientStops.length > 0) {
+          return {
+            type: 'gradient',
+            stops: gradientStops,
+            defaultColor: '#3B82F6'
+          };
+        }
       }
+      
+      // Default blue for lived cells that aren't part of an activity
+      return '#3B82F6';
+    } else {
+      // Handle future cells
+      const futureActivities = activityList.filter(a => a.future);
+      
+      // Calculate total hours for future activities
+      const totalHours = futureActivities.reduce((sum, a) => sum + (a.hoursPerDay || 0), 0);
+      
+      // If there are selected future activities
+      if (futureActivities.length > 0 && totalHours > 0) {
+        // Calculate how many cells should be colored for activities
+        const hoursPerDay = 24;
+        const activityProportion = totalHours / hoursPerDay;
+        const activityCells = progress.remaining * activityProportion;
+        const remainingIndex = index - progress.lived;
+        
+        // Calculate which activity and what portion of it belongs in this cell
+        const cellHourStart = (remainingIndex / progress.remaining) * hoursPerDay;
+        const cellHourEnd = ((remainingIndex + 1) / progress.remaining) * hoursPerDay;
+        
+        let currentHour = 0;
+        let gradientStops = [];
+        
+        // Find which activities fall within this cell's hour range
+        for (const activity of futureActivities) {
+          const activityStart = currentHour;
+          const activityEnd = currentHour + (activity.hoursPerDay || 0);
+          
+          // Check if this activity overlaps with the current cell
+          if (activityEnd > cellHourStart && activityStart < cellHourEnd) {
+            const startPercent = Math.max(0, (activityStart - cellHourStart) / (cellHourEnd - cellHourStart) * 100);
+            const endPercent = Math.min(100, (activityEnd - cellHourStart) / (cellHourEnd - cellHourStart) * 100);
+            
+            gradientStops.push({
+              color: activity.color,
+              startPercent,
+              endPercent
+            });
+          }
+          
+          currentHour = activityEnd;
+        }
+        
+        // If we have gradient stops, return them
+        if (gradientStops.length > 0) {
+          return {
+            type: 'gradient',
+            stops: gradientStops,
+            defaultColor: '#E5E7EB'
+          };
+        }
+      }
+      
+      // Default gray for future cells that aren't part of an activity
+      return '#E5E7EB';
     }
-
-    return '#3B82F6';
-  }, [activities]);
+  }, [activities, calculateProgress]);
 
   const calculateAge = useCallback(() => {
-    const today = new Date();
+    const today = new Date('2025-01-30'); // Use the provided current time
     const birth = new Date(birthDate);
-    const diffTime = today - birth;
     
     switch (timeUnit) {
       case 'hours':
-        return Math.floor(diffTime / (1000 * 60 * 60));
+        return Math.floor((today - birth) / (1000 * 60 * 60));
       case 'days':
-        return Math.floor(diffTime / (1000 * 60 * 60 * 24));
+        return Math.floor((today - birth) / (1000 * 60 * 60 * 24));
       case 'weeks':
-        return Math.floor(diffTime / (1000 * 60 * 60 * 24 * 7));
+        return Math.floor((today - birth) / (1000 * 60 * 60 * 24 * 7));
       case 'months':
-        return Math.floor(diffTime / (1000 * 60 * 60 * 24 * 30.44));
+        return Math.floor((today - birth) / (1000 * 60 * 60 * 24 * 30.44));
       case 'years':
-        return Math.floor(diffTime / (1000 * 60 * 60 * 24 * 365.25));
+        return getExactYears(birth, today);
       default:
         return 0;
     }

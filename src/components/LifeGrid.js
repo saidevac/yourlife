@@ -8,11 +8,12 @@ const LifeGrid = () => {
   const containerRef = useRef(null);
   const [windowWidth, setWindowWidth] = useState(window.innerWidth);
   const [timeUnit, setTimeUnit] = useState('years');
-  const [birthDate, setBirthDate] = useState('1990-01-01');
+  const [birthDate, setBirthDate] = useState('1978-01-01');
   const [lifespan, setLifespan] = useState(80);
   const [activities, setActivities] = useState([
-    { id: 1, name: 'Sleep', hoursPerDay: 8, color: '#3B82F6', spent: true, future: true },
-    { id: 2, name: 'Eating', hoursPerDay: 2, color: '#22C55E', spent: false, future: false }
+    { id: 1, name: 'Sleeping', hours: 8, timeUnit: 'day', hoursPerDay: 8, color: '#000000', spent: false, future: false },
+    { id: 2, name: 'Eating', hours: 2, timeUnit: 'day', hoursPerDay: 2, color: '#22C55E', spent: false, future: false },
+    { id: 3, name: 'Personal Hygiene', hours: 1, timeUnit: 'day', hoursPerDay: 1, color: '#6366F1', spent: false, future: false }
   ]);
 
   const [currentShape, setCurrentShape] = useState('square');  
@@ -84,6 +85,19 @@ const LifeGrid = () => {
     setTimeUnit(units[nextIndex]);
   };
 
+  const calculateHoursPerDay = (hours, timeUnit) => {
+    switch(timeUnit) {
+      case 'week':
+        return hours / 7;
+      case 'month':
+        return hours / 30;
+      case 'year':
+        return hours / 365;
+      default: // day
+        return hours;
+    }
+  };
+
   const { 
     calculateBaseProgress, 
     calculateAge,
@@ -131,7 +145,16 @@ const LifeGrid = () => {
   const handleActivityChange = useCallback((id, field, value) => {
     setActivities(prevActivities => prevActivities.map(activity => {
       if (activity.id === id) {
-        return { ...activity, [field]: value };
+        const updatedActivity = { ...activity, [field]: value };
+        
+        // If hours or timeUnit changes, recalculate hoursPerDay
+        if (field === 'hours' || field === 'timeUnit') {
+          const hours = field === 'hours' ? value : activity.hours;
+          const timeUnit = field === 'timeUnit' ? value : activity.timeUnit;
+          updatedActivity.hoursPerDay = calculateHoursPerDay(hours, timeUnit);
+        }
+        
+        return updatedActivity;
       }
       return activity;
     }));
@@ -141,7 +164,7 @@ const LifeGrid = () => {
     const hours = Math.min(24, Math.max(0, parseFloat(newHours) || 0));
     setActivities(prevActivities => prevActivities.map(activity => {
       if (activity.id === id) {
-        return { ...activity, hoursPerDay: hours };
+        return { ...activity, hours, hoursPerDay: hours };
       }
       return activity;
     }));
@@ -178,6 +201,8 @@ const LifeGrid = () => {
       const newActivity = {
         id: prevActivities.length + 1,
         name: 'New Activity',
+        hours: 1,
+        timeUnit: 'day',
         hoursPerDay: 1,
         color: getUniqueColor(),
         spent: false,
@@ -229,7 +254,7 @@ const LifeGrid = () => {
 
     // Create a group for the grid
     const gridGroup = svg.append('g')
-      .attr('transform', `translate(${gridLeftOffset}, ${(cellSize + padding) * 3})`);
+      .attr('transform', `translate(${gridLeftOffset}, ${(cellSize + padding) * 0.5})`);
 
     // Create cells within the grid group
     gridGroup.selectAll('path.cell')
@@ -246,12 +271,66 @@ const LifeGrid = () => {
         const scale = cellSize / 20;
         return shapes[currentShape](scale);
       })
-      .attr('fill', (d, i) => {
+      .each(function(d, i) {
         const isLived = i < progress.lived;
-        return getActivityColorForCell(i, isLived);
+        const color = getActivityColorForCell(i, isLived);
+        
+        if (typeof color === 'object' && color.type === 'gradient') {
+          // Create unique gradient ID
+          const gradientId = `gradient-${i}`;
+          
+          // Create linear gradient
+          const gradient = gridGroup.append('linearGradient')
+            .attr('id', gradientId)
+            .attr('x1', '0%')
+            .attr('y1', '0%')
+            .attr('x2', '100%')
+            .attr('y2', '0%');
+          
+          // Add initial stop with default color
+          gradient.append('stop')
+            .attr('offset', '0%')
+            .attr('stop-color', color.defaultColor);
+          
+          // Add gradient stops for each activity portion
+          color.stops.forEach(stop => {
+            // Add start stop if not at 0%
+            if (stop.startPercent > 0) {
+              gradient.append('stop')
+                .attr('offset', `${stop.startPercent}%`)
+                .attr('stop-color', color.defaultColor);
+            }
+            
+            // Add activity color stop
+            gradient.append('stop')
+              .attr('offset', `${stop.startPercent}%`)
+              .attr('stop-color', stop.color);
+            
+            gradient.append('stop')
+              .attr('offset', `${stop.endPercent}%`)
+              .attr('stop-color', stop.color);
+            
+            // Add end stop if not at 100%
+            if (stop.endPercent < 100) {
+              gradient.append('stop')
+                .attr('offset', `${stop.endPercent}%`)
+                .attr('stop-color', color.defaultColor);
+            }
+          });
+          
+          // Apply gradient
+          d3.select(this)
+            .attr('fill', `url(#${gradientId})`)
+            .attr('stroke', '#D1D5DB')
+            .attr('stroke-width', 1);
+        } else {
+          // Apply solid color
+          d3.select(this)
+            .attr('fill', color)
+            .attr('stroke', '#D1D5DB')
+            .attr('stroke-width', 1);
+        }
       })
-      .attr('stroke', '#D1D5DB')
-      .attr('stroke-width', 1)
       .attr('data-index', (d, i) => i)
       .on('mouseover', function(event, d) {
         const index = d3.select(this).attr('data-index');
@@ -290,7 +369,7 @@ const LifeGrid = () => {
       });
 
     // Calculate stats panel position
-    const statsY = (cellSize + padding) * rows + (cellSize + padding) * 4;
+    const statsY = (cellSize + padding) * rows + (cellSize + padding) * 2; // Reduced from previous value
     const headerHeight = 40;
     const activityHeight = 65;
     const verticalPadding = 30;
@@ -648,23 +727,18 @@ const LifeGrid = () => {
       const hoursGroup = nameGroup.append('g')
         .attr('transform', 'translate(0, 28)');
 
-      hoursGroup.append('text')
-        .attr('y', 12)
-        .style('font-size', '12px')
-        .text('Hours per day:');
-
       const hoursInput = hoursGroup.append('foreignObject')
-        .attr('x', 80)
+        .attr('x', 0)
         .attr('y', -4)
-        .attr('width', 50)
-        .attr('height', 24);
+        .attr('width', 40)
+        .attr('height', '24');
 
       const hoursInputField = hoursInput.append('xhtml:input')
         .attr('type', 'number')
         .attr('min', '0')
         .attr('max', '24')
         .attr('step', '0.5')
-        .attr('value', activity.hoursPerDay)
+        .attr('value', activity.hours)
         .style('width', '100%')
         .style('height', '100%')
         .style('padding', '2px 4px')
@@ -673,9 +747,44 @@ const LifeGrid = () => {
         .style('font-size', '12px')
         .on('change', function() {
           const newHours = Math.min(24, Math.max(0, parseFloat(this.value) || 0));
-          handleActivityHoursChange(activity.id, newHours);
+          handleActivityChange(activity.id, 'hours', newHours);
           this.value = newHours; // Update the input to show the clamped value
         });
+
+      hoursGroup.append('text')
+        .attr('x', 45)
+        .attr('y', 12)
+        .style('font-size', '12px')
+        .text('hours per');
+
+      // Add time unit selector
+      const timeUnitSelect = hoursGroup.append('foreignObject')
+        .attr('x', 105)
+        .attr('y', -4)
+        .attr('width', 70)
+        .attr('height', '24');
+
+      const select = timeUnitSelect.append('xhtml:select')
+        .style('width', '100%')
+        .style('height', '100%')
+        .style('padding', '2px 4px')
+        .style('border', '1px solid #D1D5DB')
+        .style('border-radius', '4px')
+        .style('font-size', '12px')
+        .style('background-color', 'white')
+        .property('value', activity.timeUnit);  // Set the current value
+
+      ['day', 'week', 'month', 'year'].forEach(unit => {
+        select.append('xhtml:option')
+          .attr('value', unit)
+          .property('selected', unit === activity.timeUnit)
+          .text(unit);
+      });
+
+      select.on('change', function() {
+        const selectedUnit = this.value;
+        handleActivityChange(activity.id, 'timeUnit', selectedUnit);
+      });
 
       // Total units under hours
       hoursGroup.append('text')
@@ -839,7 +948,7 @@ const LifeGrid = () => {
         <div className="flex flex-col sm:flex-row items-center justify-between w-full mb-0">
           <h1 className="text-3xl font-bold text-gray-800">Your Life</h1>
           <div className="flex flex-wrap items-center justify-center gap-3">
-            <div className="flex items-center gap-2 text-sm">
+            <div className="flex items-center gap-2 text-sm group relative">
               <label className="font-semibold whitespace-nowrap">Date of Birth:</label>
               <input
                 type="date"
@@ -847,8 +956,11 @@ const LifeGrid = () => {
                 onChange={handleBirthDateChange}
                 className="p-1 border rounded-md shadow-sm text-sm w-auto"
               />
+              <div className="invisible group-hover:visible absolute -bottom-12 left-0 w-48 bg-gray-800 text-white text-xs rounded p-2 z-10">
+                Enter your date of birth to calculate your life progress
+              </div>
             </div>
-            <div className="flex items-center gap-2 text-sm">
+            <div className="flex items-center gap-2 text-sm group relative">
               <label className="font-semibold whitespace-nowrap">Avg Life Span:</label>
               <input
                 type="number"
@@ -858,8 +970,11 @@ const LifeGrid = () => {
                 className="p-1 border rounded-md shadow-sm text-sm w-20"
               />
               <span className="text-sm text-gray-600">years</span>
+              <div className="invisible group-hover:visible absolute -bottom-12 left-0 w-48 bg-gray-800 text-white text-xs rounded p-2 z-10">
+                Set your expected lifespan to visualize your entire life
+              </div>
             </div>
-            <div className="flex items-center gap-2 text-sm">
+            <div className="flex items-center gap-2 text-sm group relative">
               <label className="font-semibold">View in:</label>
               <select 
                 onChange={handleTimeUnitChange} 
@@ -872,8 +987,11 @@ const LifeGrid = () => {
                 <option value="months">Months</option>
                 <option value="years">Years</option>
               </select>
+              <div className="invisible group-hover:visible absolute -bottom-12 left-0 w-48 bg-gray-800 text-white text-xs rounded p-2 z-10">
+                Choose how to break down your life: hours, days, weeks, months, or years
+              </div>
             </div>
-            <div className="flex items-center gap-2 text-sm">
+            <div className="flex items-center gap-2 text-sm group relative">
               <label className="font-semibold">as:</label>
               <div 
                 onClick={cycleShape}
@@ -895,19 +1013,25 @@ const LifeGrid = () => {
                   />
                 </svg>
               </div>
+              <div className="invisible group-hover:visible absolute -bottom-12 left-0 w-48 bg-gray-800 text-white text-xs rounded p-2 z-10">
+                Change the shape of grid cells (square, circle, or hexagon)
+              </div>
             </div>
             <button 
-              className="flex items-center gap-1 px-3 py-1 border rounded-md text-gray-700 hover:bg-gray-50"
+              className="flex items-center gap-1 px-3 py-1 border rounded-md text-gray-700 hover:bg-gray-50 group relative"
               onClick={handleShare}
             >
               <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
                 <path d="M15 8a3 3 0 10-2.977-2.63l-4.94 2.47a3 3 0 100 4.319l4.94 2.47a3 3 0 10.895-1.789l-4.94-2.47a3.027 3.027 0 000-.74l4.94-2.47C13.456 7.68 14.19 8 15 8z" />
               </svg>
               Share
+              <div className="invisible group-hover:visible absolute -bottom-12 left-0 w-48 bg-gray-800 text-white text-xs rounded p-2 z-10">
+                Share your life grid visualization with others
+              </div>
             </button>
           </div>
         </div>
-        <div className="flex justify-center items-center mt-0">
+        <div className="flex justify-center items-center mt-2"> {/* Reduced from mt-4 or higher */}
           <div className="w-full flex justify-center overflow-visible">
             <svg ref={svgRef} style={{ 
               minHeight: timeUnit === 'weeks' ? `${window.innerHeight - 90}px` : 'auto',
