@@ -62,7 +62,7 @@ export const useLifeGridCalculations = (birthDate, lifespan, timeUnit, activitie
 
   const calculateProgress = useCallback(() => {
     const { lived, remaining, total } = calculateBaseProgress();
-    const progress = (lived / total) * 100;
+    const progress = Math.round((lived / total) * 1000) / 10; // Round to 1 decimal place
 
     return {
       lived,
@@ -73,18 +73,32 @@ export const useLifeGridCalculations = (birthDate, lifespan, timeUnit, activitie
   }, [calculateBaseProgress]);
 
   const calculateActivityPastFutureUnits = useCallback((activity) => {
-    const { total, lived, remaining } = calculateProgress();
+    const { lived, remaining } = calculateProgress();
+    const hoursPerDay = activity.hours || 0;
     
-    const hoursInDay = 24;
-    const proportion = (activity.hoursPerDay || 0) / hoursInDay;
-    
-    // Always calculate both past and future units regardless of selection
-    return {
-      total: total * proportion,
-      past: lived * proportion,
-      future: remaining * proportion
+    // Convert days to the grid's time unit
+    const daysToUnit = (days, unit) => {
+      switch (unit) {
+        case 'years':
+          return days; // Already in years from calculateProgress
+        case 'months':
+          return days * 12; // Convert years to months
+        case 'weeks':
+          return days * 52.18; // Convert years to weeks
+        default:
+          return days * 365.25; // Convert years to days
+      }
     };
-  }, [calculateProgress]);
+
+    // Calculate proportion of time spent on activity
+    const activityProportion = hoursPerDay / 24;
+    
+    // Convert to selected time unit with activity proportion
+    const past = daysToUnit(lived, timeUnit) * activityProportion;
+    const future = daysToUnit(remaining, timeUnit) * activityProportion;
+
+    return { past, future };
+  }, [calculateProgress, timeUnit]);
 
   const getActivityColorForCell = useCallback((index, isLived) => {
     // Ensure activities is an array
