@@ -864,7 +864,7 @@ const LifeGrid = () => {
                   <div 
                     className="h-1.5 rounded-full absolute"
                     style={{ 
-                      width: `${(calculateAge() / lifespan) * 100}%`,
+                      width: `${(progress.lived / progress.total) * 100}%`,
                       maxWidth: '100%',
                       background: '#818CF8'
                     }}
@@ -878,7 +878,7 @@ const LifeGrid = () => {
                           .filter(a => a.future)
                           .reduce((total, activity) => {
                             const { future } = calculateActivityPastFutureUnits(activity);
-                            return total + (future / lifespan) * 100;
+                            return total + (future / progress.total) * 100;
                           }, 0)}%`,
                         background: '#E5E7EB'
                       }}
@@ -886,39 +886,30 @@ const LifeGrid = () => {
                   )}
                 </div>
                 <div className="flex justify-between text-[10px] text-gray-500">
-                  <span>{((calculateAge() / lifespan) * 100).toFixed(1)}% lived</span>
-                  <span>{(100 - (calculateAge() / lifespan) * 100 - activities
+                  <span>{((progress.lived / progress.total) * 100).toFixed(1)}% lived</span>
+                  <span>{(100 - (progress.lived / progress.total) * 100 - activities
                     .filter(a => a.future)
                     .reduce((total, activity) => {
                       const { future } = calculateActivityPastFutureUnits(activity);
-                      return total + (future / lifespan) * 100;
+                      return total + (future / progress.total) * 100;
                     }, 0)).toFixed(1)}% remain</span>
                 </div>
                 <div className="flex flex-col text-[10px] text-gray-500">
                   <span>
                     {timeUnit === 'years' 
-                      ? `${calculateAge().toFixed(1)} years lived`
+                      ? `${progress.lived.toFixed(1)} years lived`
                       : timeUnit === 'months'
-                      ? `${(calculateAge() * 12).toFixed(0)} months lived`
-                      : `${(calculateAge() * 52).toFixed(0)} weeks lived`
+                      ? `${progress.lived} months lived`
+                      : `${progress.lived} weeks lived`
                     }
                   </span>
                   <span>
-                    {(() => {
-                      const futureTime = activities
-                        .filter(a => a.future)
-                        .reduce((total, activity) => {
-                          const { future } = calculateActivityPastFutureUnits(activity);
-                          return total + future;
-                        }, 0);
-                      const remaining = lifespan - calculateAge() - futureTime;
-                      
-                      return timeUnit === 'years'
-                        ? `${remaining.toFixed(1)} years remain`
-                        : timeUnit === 'months'
-                        ? `${(remaining * 12).toFixed(0)} months remain`
-                        : `${(remaining * 52).toFixed(0)} weeks remain`;
-                    })()}
+                    {timeUnit === 'years'
+                      ? `${progress.remaining.toFixed(1)} years remain`
+                      : timeUnit === 'months'
+                      ? `${progress.remaining} months remain`
+                      : `${progress.remaining.toFixed(1)} weeks remain`
+                    }
                   </span>
                 </div>
               </div>
