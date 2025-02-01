@@ -113,19 +113,7 @@ const LifeGrid = () => {
     windowWidth
   );
 
-  // Keep track of progress state
   const [progress, setProgress] = useState(calculateProgress());
-
-  // Update progress when dependencies change
-  useEffect(() => {
-    setProgress(calculateProgress());
-  }, [calculateProgress, activities, timeUnit, birthDate, lifespan]);
-
-  useEffect(() => {
-    const handleResize = () => setWindowWidth(window.innerWidth);
-    window.addEventListener('resize', handleResize);
-    return () => window.removeEventListener('resize', handleResize);
-  }, []);
 
   const handleTimeUnitChange = useCallback((event) => {
     setTimeUnit(event.target.value);
@@ -275,23 +263,14 @@ const LifeGrid = () => {
   };
 
   useEffect(() => {
-    if (!svgRef.current) return;
-    
     const svg = d3.select(svgRef.current);
-    svg.selectAll('*').remove();
-
     const { units, unitsPerRow, rows, cellSize, padding } = calculateTimeUnits();
     const gridWidth = (cellSize + padding) * unitsPerRow;
     
-    // Calculate progress once at the start
-    const progress = calculateProgress();
+    svg.selectAll('*').remove();
     
     // Calculate left offset to center the grid
     const gridLeftOffset = Math.max(0, (windowWidth * 0.95 - gridWidth) / 2);
-
-    // Create a group for the grid
-    const gridGroup = svg.append('g')
-      .attr('transform', `translate(${gridLeftOffset}, ${(cellSize + padding) * 0.5})`);
 
     // Create activities array first
     const activitiesArray = Array.isArray(activities) ? activities : [];
@@ -309,81 +288,106 @@ const LifeGrid = () => {
     const totalActivitiesHeight = (activitiesArray.length * 160) + 100; // Height for activities plus button and padding
     const activitiesPanelHeight = Math.max(gridHeight, totalActivitiesHeight);
 
-    // Create cells within the grid group
-    gridGroup.selectAll('path.cell')
-      .data(Array(units).fill(0))
-      .enter()
-      .append('path')
+    // Clear existing gradients
+    svg.selectAll('defs').remove();
+    const defs = svg.append('defs');
+
+    // Create grid
+    const gridGroup = svg.append('g')
+      .attr('transform', `translate(${gridLeftOffset}, ${(cellSize + padding) * 0.5})`);
+
+    // Create cells
+    const cells = gridGroup.selectAll('.cell')
+      .data(Array.from({ length: units }, (_, i) => i))
+      .join('path')
       .attr('class', 'cell')
-      .attr('transform', (d, i) => {
-        const x = (i % unitsPerRow) * (cellSize + padding);
-        const y = Math.floor(i / unitsPerRow) * (cellSize + padding);
+      .attr('transform', d => {
+        const x = (d % unitsPerRow) * (cellSize + padding);
+        const y = Math.floor(d / unitsPerRow) * (cellSize + padding);
         return `translate(${x + cellSize/2}, ${y + cellSize/2})`;
       })
-      .attr('d', () => {
-        const scale = cellSize / 20;
-        return shapes[currentShape](scale);
-      })
-      .each(function(d, i) {
-        const isLived = i < progress.lived;
-        const color = getActivityColorForCell(i, isLived);
-        
-        if (typeof color === 'object' && color.type === 'gradient') {
-          // Create unique gradient ID
-          const gradientId = `gradient-${i}`;
+      .attr('d', shapes[currentShape](1))
+      .each(function(d) {
+        const cell = d3.select(this);
+        const isLived = d < progress.lived;
+        const color = getActivityColorForCell(d, isLived);
+
+        if (typeof color === 'object') {
+          // Create unique gradient ID for this cell
+          const gradientId = `gradient-${d}`;
           
           // Create linear gradient
-          const gradient = gridGroup.append('linearGradient')
+          const gradient = defs.append('linearGradient')
             .attr('id', gradientId)
             .attr('x1', '0%')
             .attr('y1', '0%')
             .attr('x2', '100%')
             .attr('y2', '0%');
           
-          // Add initial stop with default color
-          gradient.append('stop')
-            .attr('offset', '0%')
-            .attr('stop-color', color.defaultColor);
-          
-          // Add gradient stops for each activity portion
-          color.stops.forEach(stop => {
-            // Add start stop if not at 0%
-            if (stop.startPercent > 0) {
-              gradient.append('stop')
-                .attr('offset', `${stop.startPercent}%`)
-                .attr('stop-color', color.defaultColor);
-            }
+          if (color.type === 'multiGradient') {
+            // Handle multiple color segments
+            const defaultColor = color.defaultColor;
             
-            // Add activity color stop
+            // Add initial default color
             gradient.append('stop')
-              .attr('offset', `${stop.startPercent}%`)
-              .attr('stop-color', stop.color);
+              .attr('offset', '0%')
+              .attr('stop-color', defaultColor);
+            
+            // Add each color segment
+            color.segments.forEach(segment => {
+              // End previous segment with default color
+              gradient.append('stop')
+                .attr('offset', `${segment.start}%`)
+                .attr('stop-color', defaultColor);
+              
+              // Start new segment with activity color
+              gradient.append('stop')
+                .attr('offset', `${segment.start}%`)
+                .attr('stop-color', segment.color);
+              
+              // End segment with activity color
+              gradient.append('stop')
+                .attr('offset', `${segment.end}%`)
+                .attr('stop-color', segment.color);
+              
+              // Start default color again
+              gradient.append('stop')
+                .attr('offset', `${segment.end}%`)
+                .attr('stop-color', defaultColor);
+            });
+            
+            // Add final default color
+            gradient.append('stop')
+              .attr('offset', '100%')
+              .attr('stop-color', defaultColor);
+          } else {
+            // Single gradient
+            gradient.append('stop')
+              .attr('offset', '0%')
+              .attr('stop-color', color.color);
             
             gradient.append('stop')
-              .attr('offset', `${stop.endPercent}%`)
-              .attr('stop-color', stop.color);
+              .attr('offset', `${color.percentage}%`)
+              .attr('stop-color', color.color);
             
-            // Add end stop if not at 100%
-            if (stop.endPercent < 100) {
-              gradient.append('stop')
-                .attr('offset', `${stop.endPercent}%`)
-                .attr('stop-color', color.defaultColor);
-            }
-          });
+            gradient.append('stop')
+              .attr('offset', `${color.percentage}%`)
+              .attr('stop-color', color.defaultColor);
+            
+            gradient.append('stop')
+              .attr('offset', '100%')
+              .attr('stop-color', color.defaultColor);
+          }
           
-          // Apply gradient
-          d3.select(this)
-            .attr('fill', `url(#${gradientId})`)
-            .attr('stroke', '#D1D5DB')
-            .attr('stroke-width', 1);
+          // Apply gradient to cell
+          cell.attr('fill', `url(#${gradientId})`);
         } else {
           // Apply solid color
-          d3.select(this)
-            .attr('fill', color)
-            .attr('stroke', '#D1D5DB')
-            .attr('stroke-width', 1);
+          cell.attr('fill', color);
         }
       })
+      .attr('stroke', '#D1D5DB')
+      .attr('stroke-width', 1)
       .attr('data-index', (d, i) => i)
       .on('mouseover', function(event, d) {
         const index = d3.select(this).attr('data-index');
@@ -423,6 +427,106 @@ const LifeGrid = () => {
         
         gridGroup.selectAll('.cell-number').remove();
       });
+
+    // Add annotations for years view
+    if (timeUnit === 'years') {
+      // Add arrowhead definitions
+      defs.append('marker')
+        .attr('id', 'arrowhead')
+        .attr('markerWidth', 10)
+        .attr('markerHeight', 7)
+        .attr('refX', 10)
+        .attr('refY', 3.5)
+        .attr('orient', 'auto')
+        .append('polygon')
+        .attr('points', '0 0, 10 3.5, 0 7')
+        .attr('fill', '#3B82F6');
+
+      defs.append('marker')
+        .attr('id', 'arrowhead-purple')
+        .attr('markerWidth', 10)
+        .attr('markerHeight', 7)
+        .attr('refX', 10)
+        .attr('refY', 3.5)
+        .attr('orient', 'auto')
+        .append('polygon')
+        .attr('points', '0 0, 10 3.5, 0 7')
+        .attr('fill', '#8B5CF6');
+
+      // Add "Each row is one decade" annotation with lines
+      const rowWidth = unitsPerRow * (cellSize + padding);
+      
+      // Create a separate group for the decade annotation that's higher up
+      const decadeAnnotation = svg.append('g')
+        .attr('class', 'decade-annotation')
+        .attr('transform', `translate(${gridLeftOffset}, ${-80})`);
+      
+      // Left line
+      decadeAnnotation.append('line')
+        .attr('x1', 0)
+        .attr('y1', 0)
+        .attr('x2', (rowWidth - 180) / 2)
+        .attr('y2', 0)
+        .attr('stroke', '#4B5563')
+        .attr('stroke-width', 1);
+
+      // Text
+      decadeAnnotation.append('text')
+        .attr('x', rowWidth / 2)
+        .attr('y', 5)
+        .style('font-size', '14px')
+        .style('fill', '#4B5563')
+        .style('text-anchor', 'middle')
+        .style('font-weight', 'normal')
+        .text('Each row is one decade');
+
+      // Right line
+      decadeAnnotation.append('line')
+        .attr('x1', (rowWidth + 180) / 2)
+        .attr('y1', 0)
+        .attr('x2', rowWidth)
+        .attr('y2', 0)
+        .attr('stroke', '#4B5563')
+        .attr('stroke-width', 1);
+
+      // Add "Birth" annotation
+      gridGroup.append('text')
+        .attr('class', 'annotation')
+        .attr('x', -80)
+        .attr('y', cellSize)
+        .style('font-size', '14px')
+        .style('fill', '#3B82F6')
+        .style('font-weight', 'bold')
+        .text('Birth');
+
+      // Add arrow from Birth to first cell's left side
+      gridGroup.append('path')
+        .attr('d', `M -40,${cellSize} L -5,${cellSize}`)
+        .attr('stroke', '#3B82F6')
+        .attr('stroke-width', 2)
+        .attr('marker-end', 'url(#arrowhead)');
+
+      // Calculate last cell position
+      const lastCellX = ((units - 1) % unitsPerRow) * (cellSize + padding);
+      const lastCellY = Math.floor((units - 1) / unitsPerRow) * (cellSize + padding);
+      
+      // Add "Turning X" annotation
+      gridGroup.append('text')
+        .attr('class', 'annotation')
+        .attr('x', lastCellX + cellSize + 45)
+        .attr('y', lastCellY + cellSize)
+        .style('font-size', '14px')
+        .style('fill', '#8B5CF6')
+        .style('font-weight', 'bold')
+        .text(`Turning ${lifespan}`);
+
+      // Add arrow to last cell's right side
+      gridGroup.append('path')
+        .attr('d', `M ${lastCellX + cellSize + 40},${lastCellY + cellSize} L ${lastCellX + cellSize + 5},${lastCellY + cellSize}`)
+        .attr('stroke', '#8B5CF6')
+        .attr('stroke-width', 2)
+        .attr('marker-end', 'url(#arrowhead-purple)');
+    }
 
     // Add activities panel
     const activitiesPanel = svg.append('g')
@@ -757,6 +861,16 @@ const LifeGrid = () => {
     svg.select('.shape-selector path')
       .attr('d', shapes[currentShape](1.2));
   }, [currentShape, shapes, calculateTimeUnits]);
+
+  useEffect(() => {
+    setProgress(calculateProgress());
+  }, [calculateProgress, activities, timeUnit, birthDate, lifespan]);
+
+  useEffect(() => {
+    const handleResize = () => setWindowWidth(window.innerWidth);
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
 
   return (
     <div ref={containerRef} className="flex flex-col items-center">

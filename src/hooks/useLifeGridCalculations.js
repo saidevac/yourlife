@@ -1,4 +1,5 @@
 import { useCallback } from 'react';
+import * as d3 from 'd3-color';
 
 export const useLifeGridCalculations = (birthDate, lifespan, timeUnit, activities, windowWidth) => {
   // Helper function to calculate exact years between dates
@@ -118,86 +119,167 @@ export const useLifeGridCalculations = (birthDate, lifespan, timeUnit, activitie
     if (isLived) {
       // Handle past cells
       const selectedPastActivities = activityList.filter(a => !a.future && a.spent);
+      const cellFills = new Map(); // Track fill percentage for each cell
+      const cellColors = new Map(); // Track color info for each cell
+      let currentCell = 0;
       
       if (selectedPastActivities.length > 0) {
-        let startCell = 0;
+        let remainingUnits = 0;
         
         for (const activity of selectedPastActivities) {
-          // Use the past value directly as number of cells to color
           const { past } = calculateActivityPastFutureUnits(activity);
-          const fullCells = Math.floor(past);
-          const partialCell = past - fullCells;
-          const endCell = startCell + fullCells;
+          let unitsToFill = past + remainingUnits;
           
-          // Handle full and partial cells
-          if (index >= startCell && index <= endCell) {
-            // If this is the last cell and we have a partial next cell
-            if (index === endCell && partialCell > 0) {
-              return activity.color;
+          while (unitsToFill > 0) {
+            const cellIndex = currentCell;
+            const currentFill = cellFills.get(cellIndex) || 0;
+            const availableSpace = 1 - currentFill;
+            
+            if (availableSpace > 0) {
+              const fillAmount = Math.min(unitsToFill, availableSpace);
+              const newFill = currentFill + fillAmount;
+              cellFills.set(cellIndex, newFill);
+              
+              // Store color info instead of returning immediately
+              if (index === cellIndex) {
+                let colorInfo = cellColors.get(cellIndex);
+                if (!colorInfo) {
+                  colorInfo = {
+                    segments: []
+                  };
+                }
+                
+                // Add new color segment
+                colorInfo.segments.push({
+                  color: activity.color,
+                  start: currentFill * 100,
+                  end: newFill * 100
+                });
+                
+                cellColors.set(cellIndex, colorInfo);
+              }
+              
+              unitsToFill -= fillAmount;
+              if (newFill === 1) {
+                currentCell++;
+              }
+            } else {
+              currentCell++;
             }
-            // If this is the partial cell
-            if (index === endCell + 1 && partialCell > 0) {
-              return {
-                type: 'gradient',
-                defaultColor: '#818CF8', // Blue for lived cells
-                stops: [{
-                  startPercent: 0,
-                  endPercent: partialCell * 100,
-                  color: activity.color
-                }]
-              };
-            }
-            return activity.color;
           }
           
-          startCell = endCell + (partialCell > 0 ? 1 : 0);
+          remainingUnits = Math.max(0, -unitsToFill);
+        }
+        
+        // Return color info for the requested cell
+        if (cellColors.has(index)) {
+          const colorInfo = cellColors.get(index);
+          const segments = colorInfo.segments;
+          
+          if (segments.length === 1) {
+            if (segments[0].end === 100) {
+              return segments[0].color;
+            }
+            return {
+              type: 'gradient',
+              color: segments[0].color,
+              percentage: segments[0].end,
+              defaultColor: '#818CF8'
+            };
+          } else if (segments.length > 1) {
+            return {
+              type: 'multiGradient',
+              segments: segments,
+              defaultColor: '#818CF8'
+            };
+          }
         }
       }
       
-      // Default blue for lived cells that aren't part of a selected activity
-      return '#818CF8';
+      return '#818CF8'; // Default blue for lived cells
     } else {
-      // Handle future cells
+      // Handle future cells (similar logic)
       const futureActivities = activityList.filter(a => a.future);
+      const cellFills = new Map();
+      const cellColors = new Map();
+      let currentCell = 0;
       
       if (futureActivities.length > 0) {
-        const remainingIndex = index - Math.ceil(lived);
-        let startCell = 0;
+        const startIndex = Math.ceil(lived);
+        const remainingIndex = index - startIndex;
+        let remainingUnits = 0;
         
         for (const activity of futureActivities) {
-          // Use the future value directly as number of cells to color
           const { future } = calculateActivityPastFutureUnits(activity);
-          const fullCells = Math.floor(future);
-          const partialCell = future - fullCells;
-          const endCell = startCell + fullCells;
+          let unitsToFill = future + remainingUnits;
           
-          // Handle full and partial cells
-          if (remainingIndex >= startCell && remainingIndex <= endCell) {
-            // If this is the last cell and we have a partial next cell
-            if (remainingIndex === endCell && partialCell > 0) {
-              return activity.color;
+          while (unitsToFill > 0) {
+            const cellIndex = currentCell;
+            const currentFill = cellFills.get(cellIndex) || 0;
+            const availableSpace = 1 - currentFill;
+            
+            if (availableSpace > 0) {
+              const fillAmount = Math.min(unitsToFill, availableSpace);
+              const newFill = currentFill + fillAmount;
+              cellFills.set(cellIndex, newFill);
+              
+              // Store color info instead of returning immediately
+              if (remainingIndex === cellIndex) {
+                let colorInfo = cellColors.get(cellIndex);
+                if (!colorInfo) {
+                  colorInfo = {
+                    segments: []
+                  };
+                }
+                
+                // Add new color segment
+                colorInfo.segments.push({
+                  color: activity.color,
+                  start: currentFill * 100,
+                  end: newFill * 100
+                });
+                
+                cellColors.set(cellIndex, colorInfo);
+              }
+              
+              unitsToFill -= fillAmount;
+              if (newFill === 1) {
+                currentCell++;
+              }
+            } else {
+              currentCell++;
             }
-            // If this is the partial cell
-            if (remainingIndex === endCell + 1 && partialCell > 0) {
-              return {
-                type: 'gradient',
-                defaultColor: '#E5E7EB', // Gray for future cells
-                stops: [{
-                  startPercent: 0,
-                  endPercent: partialCell * 100,
-                  color: activity.color
-                }]
-              };
-            }
-            return activity.color;
           }
           
-          startCell = endCell + (partialCell > 0 ? 1 : 0);
+          remainingUnits = Math.max(0, -unitsToFill);
+        }
+        
+        // Return color info for the requested cell
+        if (cellColors.has(remainingIndex)) {
+          const colorInfo = cellColors.get(remainingIndex);
+          const segments = colorInfo.segments;
+          
+          if (segments.length === 1) {
+            if (segments[0].end === 100) {
+              return segments[0].color;
+            }
+            return {
+              type: 'gradient',
+              color: segments[0].color,
+              percentage: segments[0].end,
+              defaultColor: '#E5E7EB'
+            };
+          } else if (segments.length > 1) {
+            return {
+              type: 'multiGradient',
+              segments: segments,
+              defaultColor: '#E5E7EB'
+            };
+          }
         }
       }
       
-      // Default gray for future cells that aren't part of an activity
-      return '#E5E7EB';
+      return '#E5E7EB'; // Default gray for future cells
     }
   }, [activities, calculateBaseProgress, calculateActivityPastFutureUnits]);
 
