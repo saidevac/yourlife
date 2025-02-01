@@ -230,14 +230,14 @@ export const useLifeGridCalculations = (birthDate, lifespan, timeUnit, activitie
     // Define size reduction factors for each time unit
     const sizeFactors = {
       'hours': 0.2,   // 20% of base size
-      'days': 0.3,    // 30% of base size
+      'days': 0.15,   // 15% of base size
       'weeks': 0.4,   // 40% of base size
       'months': 0.6,  // 60% of base size
       'years': 1      // 100% of base size (no reduction)
     };
     
     // Calculate cell size based on time unit
-    const cellSize = Math.max(baseSize * sizeFactors[timeUnit], 8); // minimum 8px
+    const cellSize = Math.max(baseSize * sizeFactors[timeUnit], 6); // minimum 6px
     const padding = cellSize * 0.2;
 
     switch (timeUnit) {
@@ -247,7 +247,7 @@ export const useLifeGridCalculations = (birthDate, lifespan, timeUnit, activitie
         break;
       case 'days':
         units = Math.round(lifespan * 365.25);
-        unitsPerRow = 30; // Roughly a month per row
+        unitsPerRow = 100; // 100 days per row
         break;
       case 'weeks':
         units = Math.round(lifespan * 52);  // Use integer weeks

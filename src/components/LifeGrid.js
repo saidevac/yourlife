@@ -403,7 +403,10 @@ const LifeGrid = () => {
           .attr('y', Math.floor(index / unitsPerRow) * (cellSize + padding) + cellSize/2)
           .attr('text-anchor', 'middle')
           .attr('dominant-baseline', 'middle')
-          .style('font-size', `${Math.max(cellSize * 0.4, 10)}px`)
+          .style('font-size', '14px')
+          .style('fill', 'white')
+          .style('mix-blend-mode', 'difference')
+          .style('text-shadow', '0 0 2px rgba(0,0,0,0.5)')
           .style('pointer-events', 'none')
           .text(Number(index) + 1);
       })
@@ -784,7 +787,7 @@ const LifeGrid = () => {
               value={timeUnit}
               className="p-1 border rounded-md shadow-sm text-sm"
             >
-              <option value="hours">Hours</option>
+              
               <option value="days">Days</option>
               <option value="weeks">Weeks</option>
               <option value="months">Months</option>
