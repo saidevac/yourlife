@@ -6,17 +6,80 @@ import { useLifeGridCalculations } from '../hooks/useLifeGridCalculations';
 const LifeGrid = () => {
   const svgRef = useRef(null);
   const containerRef = useRef(null);
+
   const [windowWidth, setWindowWidth] = useState(window.innerWidth);
-  const [timeUnit, setTimeUnit] = useState('years');
   const [birthDate, setBirthDate] = useState('1978-01-01');
+  const [timeUnit, setTimeUnit] = useState('years');
   const [lifespan, setLifespan] = useState(80);
   const [activities, setActivities] = useState([
     { id: 1, name: 'Sleeping', hours: 8, timeUnit: 'day', hoursPerDay: 8, color: '#000000', spent: false, future: false },
     { id: 2, name: 'Eating', hours: 2, timeUnit: 'day', hoursPerDay: 2, color: '#22C55E', spent: false, future: false },
-    { id: 3, name: 'Personal Hygiene', hours: 1, timeUnit: 'day', hoursPerDay: 1, color: '#6366F1', spent: false, future: false }
+    { id: 3, name: 'Personal Hygiene', hours: 2, timeUnit: 'day', hoursPerDay: 8, color: '#3B82F6', spent: false, future: false }
   ]);
-
+  const [showActivityModal, setShowActivityModal] = useState(false);
+  const [selectedActivity, setSelectedActivity] = useState(null);
+  const [selectedPastHours, setSelectedPastHours] = useState(0);
+  const [selectedFutureHours, setSelectedFutureHours] = useState(0);
   const [currentShape, setCurrentShape] = useState('square');  
+  const [activityTimeUnit, setActivityTimeUnit] = useState('day');
+
+  const calculateProgress = useCallback(() => {
+    const now = new Date();
+    const birthDateObj = new Date(birthDate);
+    
+    // Calculate time difference in the current unit
+    const getDifferenceInUnits = (date1, date2, unit) => {
+      const diffInMilliseconds = date1 - date2;
+      const millisecondsPerUnit = {
+        years: 1000 * 60 * 60 * 24 * 365.25,
+        months: 1000 * 60 * 60 * 24 * 30.44, // average month length
+        weeks: 1000 * 60 * 60 * 24 * 7,
+        days: 1000 * 60 * 60 * 24
+      };
+      return diffInMilliseconds / millisecondsPerUnit[unit];
+    };
+    
+    // Calculate lived time
+    const lived = getDifferenceInUnits(now, birthDateObj, timeUnit);
+    
+    // Calculate total lifespan in the current time unit
+    const total = lifespan * (timeUnit === 'years' ? 1 : timeUnit === 'months' ? 12 : timeUnit === 'weeks' ? 52 : 365);
+    
+    // Calculate future committed time from activities
+    const futureCommitted = activities.reduce((sum, activity) => {
+      if (activity.future) {
+        const hoursPerDay = activity.hoursPerDay || (activity.hours / (activity.timeUnit === 'day' ? 1 : 
+          activity.timeUnit === 'week' ? 7 : activity.timeUnit === 'month' ? 30 : 365));
+        
+        // Convert hours per day to years
+        const yearsNeeded = (hoursPerDay * 365) / (24 * 365); // Convert to fraction of a year
+        
+        // Convert years to current time unit
+        const unitsNeeded = yearsNeeded * (timeUnit === 'years' ? 1 : 
+          timeUnit === 'months' ? 12 : 
+          timeUnit === 'weeks' ? 52 : 365);
+        
+        return sum + unitsNeeded;
+      }
+      return sum;
+    }, 0);
+    
+    // Calculate remaining time (subtract future committed time)
+    const remaining = Math.max(0, total - lived - futureCommitted);
+    
+    return {
+      lived,
+      remaining,
+      total,
+      percentage: (lived / total) * 100
+    };
+  }, [birthDate, lifespan, timeUnit, activities]);
+
+  const [progress, setProgress] = useState(() => ({
+    lived: 0,
+    total: 0,
+    percentage: 0
+  }));
 
   const shapes = {
     heart: (scale) => `
@@ -101,8 +164,6 @@ const LifeGrid = () => {
   const { 
     calculateBaseProgress, 
     calculateAge,
-    calculateActivityPastFutureUnits,
-    calculateProgress,
     getActivityColorForCell,
     calculateTimeUnits
   } = useLifeGridCalculations(
@@ -112,8 +173,6 @@ const LifeGrid = () => {
     activities,
     windowWidth
   );
-
-  const [progress, setProgress] = useState(calculateProgress());
 
   const handleTimeUnitChange = useCallback((event) => {
     setTimeUnit(event.target.value);
@@ -135,8 +194,6 @@ const LifeGrid = () => {
     }
   }, []);
 
-  const [activityTimeUnit, setActivityTimeUnit] = useState('day');
-
   const handleActivitySpentChange = (activityId, isSpent) => {
     setActivities(prevActivities =>
       prevActivities.map(activity =>
@@ -157,15 +214,17 @@ const LifeGrid = () => {
     );
   };
 
-  const handleActivityHoursChange = (activityId, hours) => {
+  const handleActivityHoursChange = useCallback((id, hours) => {
+    // Ensure hours is between 0 and 24, rounded to nearest 0.5
+    const roundedHours = Math.round(hours * 2) / 2;
+    const validHours = Math.min(24, Math.max(0, roundedHours));
+    
     setActivities(prevActivities =>
       prevActivities.map(activity =>
-        activity.id === activityId
-          ? { ...activity, hours, hoursPerDay: hours }
-          : activity
+        activity.id === id ? { ...activity, hours: validHours } : activity
       )
     );
-  };
+  }, []);
 
   const handleActivityChange = useCallback((id, field, value) => {
     setActivities(prevActivities => prevActivities.map(activity => {
@@ -212,20 +271,17 @@ const LifeGrid = () => {
   }, []);
 
   const handleAddActivity = useCallback(() => {
-    setActivities(prevActivities => {
-      const newActivity = {
-        id: prevActivities.length + 1,
-        name: 'New Activity',
-        hours: 1,
-        timeUnit: 'day',
-        hoursPerDay: 1,
-        color: getUniqueColor(),
-        spent: false,
-        future: false
-      };
-      return [...prevActivities, newActivity];
-    });
-  }, [getUniqueColor]);
+    const newActivity = {
+      id: activities.length + 1,
+      name: 'New Activity',
+      hours: 1, // Default 1 hour, already within 0-24 range
+      timeUnit: 'day',
+      color: getUniqueColor(),
+      spent: false,
+      future: false
+    };
+    setActivities([...activities, newActivity]);
+  }, [activities.length, getUniqueColor]);
 
   const handleRemoveActivity = useCallback((id) => {
     setActivities(prevActivities => prevActivities.filter(activity => activity.id !== id));
@@ -262,6 +318,211 @@ const LifeGrid = () => {
     );
   };
 
+  const clearActivities = useCallback(() => {
+    setActivities(prevActivities => 
+      prevActivities.map(activity => ({
+        ...activity,
+        spent: false,
+        future: false
+      }))
+    );
+    setSelectedActivity(null);
+    setSelectedPastHours(0);
+    setSelectedFutureHours(0);
+    setShowActivityModal(false);
+  }, []);
+
+  const formatNumber = (value) => {
+    return typeof value === 'number' ? value.toFixed(1) : '0.0';
+  };
+
+  const getUnitDisplay = (timeUnit) => {
+    switch (timeUnit) {
+      case 'day':
+        return 'hrs/day';
+      case 'week':
+        return 'hrs/week';
+      case 'month':
+        return 'hrs/month';
+      case 'year':
+        return 'hrs/year';
+      default:
+        return 'hrs/day';
+    }
+  };
+
+  const calculateActivityPastFutureUnits = useCallback((activity) => {
+    const now = new Date();
+    const birthDateObj = new Date(birthDate);
+    const lifeExpectancy = new Date(birthDateObj);
+    lifeExpectancy.setFullYear(birthDateObj.getFullYear() + lifespan);
+
+    // Calculate total hours per day for this activity
+    const hoursPerDay = activity.hours / (
+      activity.timeUnit === 'day' ? 1 :
+      activity.timeUnit === 'week' ? 7 :
+      activity.timeUnit === 'month' ? 30 :
+      activity.timeUnit === 'year' ? 365 : 1
+    );
+
+    // Calculate total hours per year
+    const hoursPerYear = hoursPerDay * 365.25;
+
+    // Calculate years from birth to now
+    const yearsSinceBirth = (now - birthDateObj) / (1000 * 60 * 60 * 24 * 365.25);
+    const yearsRemaining = (lifeExpectancy - now) / (1000 * 60 * 60 * 24 * 365.25);
+
+    // Calculate total hours based on years
+    const totalPastHours = yearsSinceBirth * hoursPerYear;
+    const totalFutureHours = yearsRemaining * hoursPerYear;
+
+    // Convert to equivalent years (based on 24-hour days)
+    const hoursInYear = 24 * 365.25;
+    const pastYears = totalPastHours / hoursInYear;
+    const futureYears = totalFutureHours / hoursInYear;
+
+    // Convert to current view's time unit
+    const timeUnitMultiplier = 
+      timeUnit === 'years' ? 1 :
+      timeUnit === 'months' ? 12 :
+      timeUnit === 'weeks' ? 52 : 365;
+
+    return {
+      pastInCurrentUnit: pastYears * timeUnitMultiplier,
+      futureInCurrentUnit: futureYears * timeUnitMultiplier,
+      totalInCurrentUnit: (pastYears + futureYears) * timeUnitMultiplier
+    };
+  }, [birthDate, lifespan, timeUnit]);
+
+  const getTimeUnitSuffix = (value) => {
+    switch (timeUnit) {
+      case 'years':
+        return value === 1 ? 'year' : 'years';
+      case 'months':
+        return value === 1 ? 'month' : 'months';
+      case 'weeks':
+        return value === 1 ? 'week' : 'weeks';
+      default:
+        return timeUnit;
+    }
+  };
+
+  const getProgressStats = useCallback(() => {
+    const now = new Date();
+    const birthDateObj = new Date(birthDate);
+    const lifeExpectancy = new Date(birthDateObj);
+    lifeExpectancy.setFullYear(birthDateObj.getFullYear() + lifespan);
+
+    // Calculate total years lived and remaining
+    const yearsSinceBirth = (now - birthDateObj) / (1000 * 60 * 60 * 24 * 365.25);
+    const yearsRemaining = (lifeExpectancy - now) / (1000 * 60 * 60 * 24 * 365.25);
+    const totalLifeYears = yearsSinceBirth + yearsRemaining;
+
+    // Calculate future committed time from activities
+    let totalFutureYears = 0;
+    activities.forEach(activity => {
+      if (activity.future) {
+        const { futureInCurrentUnit } = calculateActivityPastFutureUnits(activity);
+        if (timeUnit === 'years') {
+          totalFutureYears += futureInCurrentUnit;
+        } else if (timeUnit === 'months') {
+          totalFutureYears += futureInCurrentUnit / 12;
+        } else if (timeUnit === 'weeks') {
+          totalFutureYears += futureInCurrentUnit / 52;
+        }
+      }
+    });
+
+    // Convert to current time unit
+    const timeUnitMultiplier = 
+      timeUnit === 'years' ? 1 :
+      timeUnit === 'months' ? 12 :
+      timeUnit === 'weeks' ? 52 : 365;
+
+    const livedInUnits = yearsSinceBirth * timeUnitMultiplier;
+    const futureInUnits = totalFutureYears * timeUnitMultiplier;
+    const totalInUnits = totalLifeYears * timeUnitMultiplier;
+    const remainingInUnits = Math.max(0, totalInUnits - livedInUnits - futureInUnits);
+
+    // Calculate percentages
+    const percentageLived = (yearsSinceBirth / totalLifeYears) * 100;
+    const percentageFuture = (totalFutureYears / totalLifeYears) * 100;
+    const percentageRemaining = Math.max(0, 100 - percentageLived - percentageFuture);
+
+    return {
+      lived: livedInUnits,
+      remaining: remainingInUnits,
+      total: totalInUnits,
+      futureCommitted: futureInUnits,
+      percentageLived,
+      percentageFuture,
+      percentageRemaining
+    };
+  }, [birthDate, lifespan, activities, timeUnit]);
+
+  const renderProgressBar = () => {
+    const { percentageLived, percentageFuture, percentageRemaining, lived, remaining } = getProgressStats();
+    
+    return (
+      <div className="flex flex-col gap-2 w-[110%]">
+        <div className="flex justify-between text-[11px] text-gray-600">
+          <span>{formatNumber(percentageLived)}% lived</span>
+          <span>{formatNumber(percentageRemaining)}% remain</span>
+        </div>
+        <div className="w-full h-2 bg-gray-200 rounded-full relative">
+          <div 
+            className="h-2 rounded-full"
+            style={{ 
+              width: `${percentageLived}%`,
+              maxWidth: '100%',
+              background: '#818CF8'
+            }}
+          >
+            <div 
+              className="h-2 rounded-full absolute right-0"
+              style={{ 
+                width: `${percentageRemaining}%`,
+                background: '#E5E7EB'
+              }}
+            />
+          </div>
+        </div>
+        <div className="flex flex-col gap-1.5 text-sm text-gray-600">
+          <span>
+            {timeUnit === 'years' 
+              ? `${formatNumber(lived)} years lived`
+              : timeUnit === 'months'
+              ? `${formatNumber(lived)} months lived`
+              : `${formatNumber(lived)} weeks lived`}
+          </span>
+          <span>
+            {timeUnit === 'years'
+              ? `${formatNumber(remaining)} years remain`
+              : timeUnit === 'months'
+              ? `${formatNumber(remaining)} months remain`
+              : `${formatNumber(remaining)} weeks remain`}
+          </span>
+        </div>
+      </div>
+    );
+  };
+
+  const renderProgressText = () => {
+    const { lived, remaining } = getProgressStats();
+    const unitLabel = timeUnit.slice(0, -1); // Remove 's' from end
+    
+    return (
+      <div className="flex gap-4 text-sm text-gray-600">
+        <span>{Math.floor(lived)} {unitLabel}s lived</span>
+        <span>{Math.floor(remaining)} {unitLabel}s remaining</span>
+      </div>
+    );
+  };
+
+  useEffect(() => {
+    setProgress(calculateProgress());
+  }, [calculateProgress, birthDate, lifespan, timeUnit]);
+
   useEffect(() => {
     const svg = d3.select(svgRef.current);
     const { units, unitsPerRow, rows, cellSize, padding } = calculateTimeUnits();
@@ -277,16 +538,23 @@ const LifeGrid = () => {
 
     // Define common layout variables
     const headerHeight = 60;  // Space for title and controls
-    const activityHeight = 100;  // Height per activity
+    const activityHeight = 140;  // Height per activity
     const verticalPadding = 40;  // Padding between sections
     const buttonHeight = 50;  // Space for button and padding
 
     // Calculate activities panel position and dimensions
-    const activitiesX = windowWidth - 220; // 200px width + 20px margin
+    const baseActivityPanelWidth = 240;
+    const widthIncrease = baseActivityPanelWidth * 0.05; // 5% of original width
+    const activityPanelWidth = baseActivityPanelWidth + widthIncrease;
+    const activityPanelRightMargin = 40;
+    const activitiesX = windowWidth - activityPanelWidth - widthIncrease + 20; // Move left by 5% of width
     const activitiesY = (cellSize + padding) * 0.5;
     const gridHeight = (cellSize + padding) * rows;
-    const totalActivitiesHeight = (activitiesArray.length * 160) + 100; // Height for activities plus button and padding
-    const activitiesPanelHeight = Math.max(gridHeight, totalActivitiesHeight);
+    const totalActivitiesHeight = activities.length * activityHeight + 120; // Increased padding for buttons
+
+    // Set SVG dimensions to accommodate both grid and activities
+    const svgHeight = Math.max(gridHeight + 100, totalActivitiesHeight); // Added padding for grid
+    svg.attr('height', svgHeight);
 
     // Clear existing gradients
     svg.selectAll('defs').remove();
@@ -528,114 +796,83 @@ const LifeGrid = () => {
         .attr('marker-end', 'url(#arrowhead-purple)');
     }
 
-    // Add activities panel
+    // Create activities panel
     const activitiesPanel = svg.append('g')
-      .attr('class', 'activities')
+      .attr('class', 'activities-panel')
       .attr('transform', `translate(${activitiesX}, ${activitiesY})`);
 
-    // Add background for activities
-    activitiesPanel.append('rect')
-      .attr('width', 200) // Fixed width to make it more compact
-      .attr('height', activitiesPanelHeight)
+    // Add background for activities panel
+    const panelBackground = activitiesPanel.append('rect')
+      .attr('width', activityPanelWidth - activityPanelRightMargin - 24)
+      .attr('height', activities.length * activityHeight + 80) 
       .attr('fill', '#F3F4F6')
       .attr('rx', 8)
       .attr('ry', 8);
 
-    // Add content group for activities
-    const activitiesContent = activitiesPanel.append('g')
-      .attr('transform', 'translate(0, 20)');
-
-    // Add "Activities" title
-    activitiesContent.append('text')
-      .style('font-size', '15px')
-      .style('font-weight', '600')
-      .style('fill', '#111827')
+    // Add activities header
+    activitiesPanel.append('text')
+      .attr('x', 12)
+      .attr('y', 25)
+      .style('font-size', '14px')
+      .style('font-weight', 'bold')
+      .style('fill', '#1F2937')
       .text('Activities');
 
-    // Add activities list with more compact layout
-    const activityList = activitiesContent.append('g')
-      .attr('transform', 'translate(0, 25)'); // Reduced from 40
+    // Activities content container
+    const activitiesContent = activitiesPanel.append('g')
+      .attr('transform', `translate(12, 40)`);
 
     // Function to create activity rows
     const createActivityRow = (activity, index) => {
-      const yOffset = index * 160; // More space between activities
-      const row = activityList.append('g')
+      const yOffset = index * activityHeight;
+      const row = activitiesContent.append('g')
         .attr('transform', `translate(0, ${yOffset})`);
 
-      // Color picker (before activity name)
-      const colorContainer = row.append('foreignObject')
-        .attr('width', 24)
+      // Activity name and color row
+      const nameGroup = row.append('g');
+
+      // Color picker
+      const colorContainer = nameGroup.append('foreignObject')
+        .attr('width', 20)
         .attr('height', 24);
 
       colorContainer.append('xhtml:input')
         .attr('type', 'color')
         .attr('value', activity.color)
-        .style('width', '100%')
-        .style('height', '100%')
+        .style('width', '20px')
+        .style('height', '20px')
         .style('padding', '0')
-        .style('border', '1px solid #D1D5DB')
-        .style('border-radius', '4px')
-        .style('font-size', '13px')
+        .style('border', 'none')
+        .style('cursor', 'pointer')
         .on('change', function() {
           handleActivityColorChange(activity.id, this.value);
         });
 
-      // Activity name and delete button
-      const nameGroup = row.append('g')
-        .attr('transform', 'translate(34, 0)');
-
       // Activity name input
       const nameContainer = nameGroup.append('foreignObject')
-        .attr('width', 110) // Fixed width to prevent overflow
-        .attr('height', 24)
-        .attr('y', -4);
+        .attr('x', 30)
+        .attr('width', 160)
+        .attr('height', 24);
 
-      const nameInput = nameContainer.append('xhtml:input')
+      nameContainer.append('xhtml:input')
         .attr('type', 'text')
         .attr('value', activity.name)
         .style('width', '100%')
-        .style('height', '24px')
         .style('font-size', '14px')
-        .style('font-weight', '500')
-        .style('border', '1px solid transparent')
-        .style('background', 'none')
-        .style('padding', '2px 4px')
-        .style('border-radius', '4px')
+        .style('border', 'none')
+        .style('background', 'transparent')
+        .style('outline', 'none')
+        .style('color', '#1F2937')
         .on('change', function() {
           handleActivityNameChange(activity.id, this.value);
-        })
-        .on('focus', function() {
-          this.style.border = '1px solid #D1D5DB';
-          this.style.background = 'white';
-        })
-        .on('blur', function() {
-          this.style.border = '1px solid transparent';
-          this.style.background = 'none';
         });
 
-      // Delete button (X)
-      nameGroup.append('text')
-        .attr('x', 115) // Position after the fixed-width name input
-        .attr('y', 16)
-        .style('font-size', '16px')
-        .style('fill', '#EF4444')
-        .style('cursor', 'pointer')
-        .text('×')
-        .on('mouseover', function() {
-          d3.select(this).style('font-weight', 'bold');
-        })
-        .on('mouseout', function() {
-          d3.select(this).style('font-weight', 'normal');
-        })
-        .on('click', () => handleRemoveActivity(activity.id));
+      // Hours input and unit selector on second row
+      const configGroup = row.append('g')
+        .attr('transform', 'translate(30, 32)');
 
-      // Hours input group
-      const hoursGroup = row.append('g')
-        .attr('transform', 'translate(0, 30)');
-
-      // Hours input using foreignObject
-      const hoursContainer = hoursGroup.append('foreignObject')
-        .attr('width', 45)
+      const hoursContainer = configGroup.append('foreignObject')
+        .attr('width', 50)
         .attr('height', 24);
 
       hoursContainer.append('xhtml:input')
@@ -645,185 +882,211 @@ const LifeGrid = () => {
         .attr('step', '0.5')
         .attr('value', activity.hours)
         .style('width', '100%')
-        .style('height', '100%')
-        .style('padding', '2px')
+        .style('font-size', '13px')
         .style('border', '1px solid #D1D5DB')
         .style('border-radius', '4px')
-        .style('font-size', '13px')
+        .style('padding', '2px 4px')
         .on('change', function() {
-          handleActivityHoursChange(activity.id, +this.value);
+          const value = parseFloat(this.value) || 0;
+          const rounded = Math.round(value * 2) / 2;
+          handleActivityHoursChange(activity.id, Math.min(24, Math.max(0, rounded)));
         });
 
-      // "Hours per" text
-      hoursGroup.append('text')
-        .attr('x', 50)
+      // Add hrs/ label
+      configGroup.append('text')
+        .attr('x', 55)
         .attr('y', 16)
         .style('font-size', '13px')
         .style('fill', '#4B5563')
         .text('hrs/');
 
-      // Time unit select
-      const selectContainer = hoursGroup.append('foreignObject')
-        .attr('x', 75)
-        .attr('width', 65)
+      const unitContainer = configGroup.append('foreignObject')
+        .attr('x', 80)
+        .attr('width', 70)
         .attr('height', 24);
 
-      const select = selectContainer.append('xhtml:select')
+      const unitSelect = unitContainer.append('xhtml:select')
         .style('width', '100%')
-        .style('height', '100%')
-        .style('padding', '2px')
+        .style('font-size', '13px')
         .style('border', '1px solid #D1D5DB')
         .style('border-radius', '4px')
-        .style('background-color', 'white')
-        .style('font-size', '13px')
+        .style('padding', '2px 4px')
         .on('change', function() {
           handleActivityTimeUnitChange(activity.id, this.value);
         });
 
       ['day', 'week', 'month', 'year'].forEach(unit => {
-        select.append('xhtml:option')
+        unitSelect.append('xhtml:option')
           .attr('value', unit)
-          .property('selected', unit === activity.timeUnit)
+          .property('selected', activity.timeUnit === unit)
           .text(unit);
       });
 
-      // Common style for labels
-      const createLabel = (container, text) => {
-        const label = container.append('xhtml:label')
-          .style('display', 'flex')
-          .style('alignItems', 'center')
-          .style('gap', '4px');
-
-        label.append('xhtml:input')
-          .attr('type', 'checkbox')
-          .style('width', '14px')
-          .style('height', '14px');
-
-        label.append('xhtml:span')
-          .style('font-size', '13px')
-          .style('color', '#4B5563')
-          .text(text);
-
-        return label;
-      };
-
-      // Function to get proper unit display
-      const getUnitDisplay = (unit) => {
-        switch (unit) {
-          case 'day': return 'days';
-          case 'week': return 'weeks';
-          case 'month': return 'months';
-          case 'year': return 'years';
-          default: return unit;
-        }
-      };
-
-      // Past section
+      // Past checkbox and value on third row
       const pastGroup = row.append('g')
-        .attr('transform', 'translate(0, 65)');
+        .attr('transform', 'translate(30, 64)');
 
-      // Past checkbox and label
       const pastContainer = pastGroup.append('foreignObject')
-        .attr('width', 80)
-        .attr('height', 24);
+        .attr('width', 60)
+        .attr('height', 16);
 
-      const pastLabel = createLabel(pastContainer, 'Past')
-        .select('input')
+      const pastLabel = pastContainer.append('xhtml:label')
+        .style('display', 'flex')
+        .style('align-items', 'center')
+        .style('gap', '4px')
+        .style('font-size', '13px')
+        .style('color', '#4B5563');
+
+      pastLabel.append('xhtml:input')
+        .attr('type', 'checkbox')
         .property('checked', activity.spent)
         .on('change', function() {
           handleActivitySpentChange(activity.id, this.checked);
         });
 
-      // Past time value (always shown)
-      const { past } = calculateActivityPastFutureUnits(activity);
+      pastLabel.append('xhtml:span')
+        .text('Past');
+
+      // Past hours with unit display (always show, checkbox only affects grid/progress)
+      const { pastInCurrentUnit, futureInCurrentUnit, totalInCurrentUnit } = calculateActivityPastFutureUnits(activity);
       pastGroup.append('text')
-        .attr('x', 70)
-        .attr('y', 16)
-        .style('font-size', '11px')  // Reduced from 13px
-        .style('fill', activity.spent ? '#000' : '#6B7280')
-        .text(`${past.toFixed(1)} ${getUnitDisplay(timeUnit)}`);
+        .attr('x', 80)
+        .attr('y', 12)
+        .style('font-size', '13px')
+        .style('fill', activity.spent ? '#1F2937' : '#6B7280')
+        .text(`${formatNumber(pastInCurrentUnit)} ${getTimeUnitSuffix(pastInCurrentUnit)}`);
 
-      // Future section
+      // Future checkbox and value on fourth row
       const futureGroup = row.append('g')
-        .attr('transform', 'translate(0, 90)');
+        .attr('transform', 'translate(30, 88)');
 
-      // Future checkbox and label
       const futureContainer = futureGroup.append('foreignObject')
-        .attr('width', 80)
-        .attr('height', 24);
+        .attr('width', 60)
+        .attr('height', 16);
 
-      const futureLabel = createLabel(futureContainer, 'Future')
-        .select('input')
+      const futureLabel = futureContainer.append('xhtml:label')
+        .style('display', 'flex')
+        .style('align-items', 'center')
+        .style('gap', '4px')
+        .style('font-size', '13px')
+        .style('color', '#4B5563');
+
+      futureLabel.append('xhtml:input')
+        .attr('type', 'checkbox')
         .property('checked', activity.future)
         .on('change', function() {
           handleActivityFutureChange(activity.id, this.checked);
         });
 
-      // Future time value (always shown)
-      const { future } = calculateActivityPastFutureUnits(activity);
-      futureGroup.append('text')
-        .attr('x', 70)
-        .attr('y', 16)
-        .style('font-size', '11px')  // Reduced from 13px
-        .style('fill', activity.future ? '#000' : '#6B7280')
-        .text(`${future.toFixed(1)} ${getUnitDisplay(timeUnit)}`);
+      futureLabel.append('xhtml:span')
+        .text('Future');
 
-      // Total section
+      // Future hours with unit display (always show, checkbox only affects grid/progress)
+      futureGroup.append('text')
+        .attr('x', 80)
+        .attr('y', 12)
+        .style('font-size', '13px')
+        .style('fill', activity.future ? '#1F2937' : '#6B7280')
+        .text(`${formatNumber(futureInCurrentUnit)} ${getTimeUnitSuffix(futureInCurrentUnit)}`);
+
+      // Total (always show)
       const totalGroup = row.append('g')
-        .attr('transform', 'translate(0, 115)');
+        .attr('transform', 'translate(30, 112)');
 
       totalGroup.append('text')
-        .attr('x', 0)
-        .attr('y', 16)
+        .attr('y', 12)
         .style('font-size', '13px')
-        .style('fill', '#4B5563')
+        .style('fill', '#1F2937')
         .text('Total:');
 
-      // Calculate and display total
-      const total = past + future;  // Always show total regardless of selection
       totalGroup.append('text')
-        .attr('x', 70)
-        .attr('y', 16)
-        .style('font-size', '11px')  // Reduced from 13px
-        .style('fill', '#000')
-        .text(`${total.toFixed(1)} ${getUnitDisplay(timeUnit)}`);
+        .attr('x', 80)
+        .attr('y', 12)
+        .style('font-size', '13px')
+        .style('fill', '#1F2937')
+        .text(`${formatNumber(totalInCurrentUnit)} ${getTimeUnitSuffix(totalInCurrentUnit)}`);
     };
 
-    // Create rows for each activity
-    activitiesArray.forEach((activity, index) => {
+    // Create activity rows first
+    activities.forEach((activity, index) => {
       createActivityRow(activity, index);
     });
 
-    // Add new activity button at the bottom using foreignObject
-    const buttonContainer = activitiesContent.append('foreignObject')
-      .attr('y', activitiesArray.length * 160 + 60)
-      .attr('width', 120)
-      .attr('height', 32);
+    // Add buttons container at the bottom
+    const buttonsContainer = activitiesPanel.append('foreignObject')
+      .attr('x', 12)
+      .attr('y', activities.length * activityHeight + 40)
+      .attr('width', activityPanelWidth - activityPanelRightMargin - 24)
+      .attr('height', 40);
 
-    buttonContainer.append('xhtml:button')
-      .text('+ Add Activity')
-      .style('width', '100%')
-      .style('height', '100%')
-      .style('background-color', '#3B82F6')
-      .style('color', 'white')
-      .style('border', 'none')
-      .style('border-radius', '6px')
+    const buttonWrapper = buttonsContainer.append('xhtml:div')
+      .style('display', 'flex')
+      .style('gap', '4px')
+      .style('width', '100%');
+
+    // Clear button
+    const clearButton = buttonWrapper.append('xhtml:button')
+      .style('flex', '1')
+      .style('padding', '2px 4px')
       .style('font-size', '14px')
+      .style('border', '1px solid #E5E7EB')
+      .style('border-radius', '3px')
+      .style('background-color', '#FFFFFF')
+      .style('color', '#374151')
       .style('cursor', 'pointer')
+      .style('transition', 'all 150ms ease-in-out')
+      .style('line-height', '1')
+      .text('Clear All')
       .on('mouseover', function() {
-        this.style.backgroundColor = '#2563EB';
+        d3.select(this)
+          .style('background-color', '#F3F4F6');
       })
       .on('mouseout', function() {
-        this.style.backgroundColor = '#3B82F6';
+        d3.select(this)
+          .style('background-color', '#FFFFFF');
       })
-      .on('click', handleAddActivity);
+      .on('click', () => {
+        setActivities(activities.map(a => ({
+          ...a,
+          spent: false,
+          future: false
+        })));
+      });
 
-    // Update SVG height to accommodate grid and activities
-    svg.attr('width', windowWidth * 0.95)
-      .attr('height', Math.max(
-        gridHeight + (cellSize + padding) * 2, 
-        activitiesY + activitiesPanelHeight + buttonHeight + verticalPadding
-      ));
+    // Add Activity button
+    const addButton = buttonWrapper.append('xhtml:button')
+      .style('flex', '1')
+      .style('padding', '2px 4px')
+      .style('font-size', '14px')
+      .style('border', '1px solid #E5E7EB')
+      .style('border-radius', '3px')
+      .style('background-color', '#3B82F6')
+      .style('color', '#FFFFFF')
+      .style('cursor', 'pointer')
+      .style('transition', 'all 150ms ease-in-out')
+      .style('line-height', '1')
+      .text('Add Activity')
+      .on('mouseover', function() {
+        d3.select(this)
+          .style('background-color', '#2563EB');
+      })
+      .on('mouseout', function() {
+        d3.select(this)
+          .style('background-color', '#3B82F6');
+      })
+      .on('click', () => {
+        // Create new activity with default values
+        const newActivity = {
+          id: activities.length + 1,
+          name: 'New Activity',
+          hours: 1, // Default 1 hour, already within 0-24 range
+          timeUnit: 'day',
+          color: getUniqueColor(),
+          spent: false,
+          future: false
+        };
+        setActivities([...activities, newActivity]);
+      });
   }, [
     timeUnit,
     birthDate,
@@ -838,7 +1101,7 @@ const LifeGrid = () => {
     handleActivityHoursChange,
     handleActivityNameChange,
     handleAddActivity,
-    handleRemoveActivity,  // Add handleRemoveActivity to dependencies
+    handleRemoveActivity,
     shapes,
     currentShape
   ]);
@@ -861,10 +1124,6 @@ const LifeGrid = () => {
     svg.select('.shape-selector path')
       .attr('d', shapes[currentShape](1.2));
   }, [currentShape, shapes, calculateTimeUnits]);
-
-  useEffect(() => {
-    setProgress(calculateProgress());
-  }, [calculateProgress, activities, timeUnit, birthDate, lifespan]);
 
   useEffect(() => {
     const handleResize = () => setWindowWidth(window.innerWidth);
@@ -977,58 +1236,7 @@ const LifeGrid = () => {
               {/* Progress bar section */}
               <div className="flex flex-col gap-1 mt-2">
                 <label className="text-sm font-semibold text-gray-700">Progress:</label>
-                <div className="w-full h-1.5 bg-gray-200 rounded-full relative">
-                  <div 
-                    className="h-1.5 rounded-full absolute"
-                    style={{ 
-                      width: `${(progress.lived / progress.total) * 100}%`,
-                      maxWidth: '100%',
-                      background: '#818CF8'
-                    }}
-                  />
-                  {/* Future activities reduce remaining space */}
-                  {activities.some(a => a.future) && (
-                    <div 
-                      className="h-1.5 rounded-full absolute right-0"
-                      style={{ 
-                        width: `${activities
-                          .filter(a => a.future)
-                          .reduce((total, activity) => {
-                            const { future } = calculateActivityPastFutureUnits(activity);
-                            return total + (future / progress.total) * 100;
-                          }, 0)}%`,
-                        background: '#E5E7EB'
-                      }}
-                    />
-                  )}
-                </div>
-                <div className="flex justify-between text-[10px] text-gray-500">
-                  <span>{((progress.lived / progress.total) * 100).toFixed(1)}% lived</span>
-                  <span>{(100 - (progress.lived / progress.total) * 100 - activities
-                    .filter(a => a.future)
-                    .reduce((total, activity) => {
-                      const { future } = calculateActivityPastFutureUnits(activity);
-                      return total + (future / progress.total) * 100;
-                    }, 0)).toFixed(1)}% remain</span>
-                </div>
-                <div className="flex flex-col text-[10px] text-gray-500">
-                  <span>
-                    {timeUnit === 'years' 
-                      ? `${progress.lived.toFixed(1)} years lived`
-                      : timeUnit === 'months'
-                      ? `${progress.lived} months lived`
-                      : `${progress.lived} weeks lived`
-                    }
-                  </span>
-                  <span>
-                    {timeUnit === 'years'
-                      ? `${progress.remaining.toFixed(1)} years remain`
-                      : timeUnit === 'months'
-                      ? `${progress.remaining} months remain`
-                      : `${progress.remaining.toFixed(1)} weeks remain`
-                    }
-                  </span>
-                </div>
+                {renderProgressBar()}
               </div>
             </div>
           </div>
