@@ -7,6 +7,7 @@ import ProgressBar from './ProgressBar';
 import ProgressText from './ProgressText';
 import * as htmlToImage from 'html-to-image';
 import { shapes } from '../utils/gridShapes';
+import FeedbackButton from './FeedbackButton'; // Import the FeedbackButton component
 
 const LifeGrid = () => {
   const svgRef = useRef(null);
@@ -692,13 +693,15 @@ const LifeGrid = () => {
           <div className="w-full sm:w-[15%] flex justify-center sm:justify-end">
             <button
               onClick={handleShare}
-              className="p-2 bg-indigo-500 text-white rounded-lg hover:bg-indigo-600 transition-colors shadow-sm"
+              className="flex items-center justify-center p-2 bg-indigo-500 text-white rounded-lg hover:bg-indigo-600 transition-colors shadow-sm"
               title="Download Screenshot"
             >
-              <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
               </svg>
+              <span className="text-sm">Screenshot</span>
             </button>
+            <FeedbackButton />
           </div>
         </div>
       </div>
