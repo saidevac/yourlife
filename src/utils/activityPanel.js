@@ -76,7 +76,7 @@ export const createActivityRow = (
     .style('font-size', '13px')
     .style('border', '1px solid #D1D5DB')
     .style('border-radius', '4px')
-    .style('padding', '2px 4px')
+    .style('padding', '1px 4px')
     .on('change', function() {
       const value = parseFloat(this.value) || 0;
       const rounded = Math.round(value * 2) / 2;
@@ -101,7 +101,7 @@ export const createActivityRow = (
     .style('font-size', '13px')
     .style('border', '1px solid #D1D5DB')
     .style('border-radius', '4px')
-    .style('padding', '2px 4px')
+    .style('padding', '1px 4px')
     .on('change', function() {
       handleActivityTimeUnitChange(activity.id, this.value);
     });

@@ -5,27 +5,25 @@ const ProgressBar = ({ stats, timeUnit, formatNumber }) => {
   
   return (
     <div className="flex flex-col gap-2 w-[110%]">
-      <div className="flex justify-between text-[11px] text-gray-600">
-        <span>{formatNumber(percentageLived)}% lived</span>
-        <span>{formatNumber(percentageRemaining)}% remain</span>
+      <div className="flex justify-between text-[11px]">
+        <span className="text-indigo-400">{formatNumber(percentageLived)}% lived</span>
+        <span className="text-orange-400">{formatNumber(percentageRemaining)}% remain</span>
       </div>
-      <div className="w-full h-2 bg-gray-200 rounded-full relative">
+      <div className="w-full h-2 bg-gray-200 rounded-full overflow-hidden">
         <div 
-          className="h-2 rounded-full"
+          className="h-full bg-indigo-400"
           style={{ 
             width: `${percentageLived}%`,
-            maxWidth: '100%',
-            background: '#818CF8'
           }}
-        >
-          <div 
-            className="h-2 rounded-full absolute right-0"
-            style={{ 
-              width: `${percentageRemaining}%`,
-              background: '#E5E7EB'
-            }}
-          />
-        </div>
+        />
+        <div 
+          className="h-full bg-orange-400"
+          style={{ 
+            width: `${percentageFuture}%`,
+            marginLeft: `${percentageLived}%`,
+            marginTop: '-8px'
+          }}
+        />
       </div>
     </div>
   );
