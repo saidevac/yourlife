@@ -298,24 +298,66 @@ const LifeGrid = () => {
   }, []);
 
   const handleShare = useCallback(() => {
-    if (!containerRef.current) return;
+    const element = document.querySelector('#root');
+    if (!element) return;
 
-    htmlToImage.toPng(containerRef.current, {
-      quality: 1.0,
-      backgroundColor: 'white',
+    // Save original styles
+    const originalStyles = {
+      height: element.style.height,
+      overflow: element.style.overflow,
+      maxHeight: element.style.maxHeight,
+      position: element.style.position,
+      backgroundColor: element.style.backgroundColor
+    };
+
+    // Set styles for full capture
+    element.style.height = 'auto';
+    element.style.overflow = 'visible';
+    element.style.maxHeight = 'none';
+    element.style.position = 'relative';
+    element.style.backgroundColor = 'white';
+
+    // Force a layout recalculation
+    const height = element.offsetHeight;
+
+    htmlToImage.toPng(element, {
+      quality: 0.9,
+      height: element.scrollHeight,
+      width: element.scrollWidth,
+      cacheBust: true,
+      backgroundColor: '#ffffff',
       style: {
-        transform: 'none'
+        overflow: 'visible',
+        height: 'auto',
+        maxHeight: 'none',
+        backgroundColor: 'white',
+        '*': {
+          backgroundColor: 'white'
+        }
+      },
+      filter: (node) => {
+        // Include all nodes except those that might interfere with capture
+        const excludeClasses = ['mobile-message'];
+        return !excludeClasses.some(className => 
+          node.classList?.contains(className)
+        );
       }
     })
-      .then(dataUrl => {
-        const link = document.createElement('a');
-        link.download = 'your-life-timeline.png';
-        link.href = dataUrl;
-        link.click();
-      })
-      .catch(error => {
-        console.error('Error creating image:', error);
+    .then(dataUrl => {
+      const link = document.createElement('a');
+      link.download = 'life-grid.png';
+      link.href = dataUrl;
+      link.click();
+    })
+    .catch(error => {
+      console.error('Screenshot error:', error);
+    })
+    .finally(() => {
+      // Restore original styles
+      Object.entries(originalStyles).forEach(([key, value]) => {
+        element.style[key] = value;
       });
+    });
   }, []);
 
   const handleActivityTimeUnitChange = useCallback((activityId, timeUnit) => {
@@ -576,7 +618,7 @@ const LifeGrid = () => {
   }, [windowWidth]);
 
   return (
-    <div className="h-screen flex flex-col bg-white">
+    <div ref={containerRef} className="h-screen flex flex-col bg-white">
       {/* Mobile Message */}
       {showMobileMessage && windowWidth < 640 && (
         <div className="relative bg-blue-50 p-4">
@@ -601,7 +643,7 @@ const LifeGrid = () => {
         <div className="flex flex-col sm:flex-row justify-between items-center gap-4">
           <div className="w-full sm:w-[15%]"></div>
           <div className="flex flex-wrap justify-center items-center gap-4">
-            <h1 className="text-2xl font-bold text-gray-900 w-32">Your Life</h1>
+            <h1 className="text-2xl font-bold text-gray-900">Your Life</h1>
             <div className="flex items-center gap-2">
               <span>View in:</span>
               <select
@@ -634,17 +676,28 @@ const LifeGrid = () => {
                   {currentShape === 'hexagon' && <path d={shapes.hexagon(0.5)} fill="#3B82F6" />}
                 </svg>
               </button>
+              <span className="text-sm text-gray-600">
+                based on{' '}
+                <a 
+                  href="https://waitbutwhy.com/2014/05/life-weeks.html"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-blue-600 hover:text-blue-800 hover:underline"
+                >
+                  WAIT BUT WHY by Tim Urban
+                </a>
+              </span>
             </div>
           </div>
           <div className="w-full sm:w-[15%] flex justify-center sm:justify-end">
             <button
               onClick={handleShare}
-              className="px-4 py-1.5 bg-blue-500 text-white rounded-md hover:bg-blue-600 transition-colors flex items-center gap-2"
+              className="p-2 bg-indigo-500 text-white rounded-lg hover:bg-indigo-600 transition-colors shadow-sm"
+              title="Download Screenshot"
             >
-              <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
-                <path d="M15 8a3 3 0 10-2.977-2.63l-4.94 2.47a3 3 0 100 4.319l4.94 2.47a3 3 0 10.895-1.789l-4.94-2.47a3.027 3.027 0 000-.74l4.94-2.47C13.456 7.68 14.19 8 15 8z" />
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
               </svg>
-              Share
             </button>
           </div>
         </div>
