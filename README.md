@@ -21,6 +21,34 @@ Open [http://localhost:3000](http://localhost:3000) to view it in your browser.
 
 Launches the test runner in the interactive watch mode.
 
+## Screenshot
+
+![App Screenshot](public/screenshot.png)
+
+## App Controls
+
+- **Screenshot Button**: This button allows you to capture the current view of your timeline. It is located at the top right corner of the screen.
+- **Feedback Button**: Located at the bottom left corner, this button opens your email client to send feedback about the app.
+- **Shape Selector**: This control allows you to choose different shapes for visualizing your timeline. It is located near the top of the grid.
+
+## Settings Section
+
+In the Settings section, users can customize their experience by entering their Date of Birth (DOB) and average life span. This allows the application to visually represent your life timeline, helping you understand how much time you have left based on your average life expectancy.
+
+- **Customize Your Life Timeline**: By inputting your DOB and expected lifespan, the app generates a grid that represents your life visually, allowing you to see how your life is structured over time.
+
+- **Add New Activities**: Users can easily add new activities to their timeline. This feature allows you to visualize significant events and milestones in your life, helping you plan and reflect on your journey.
+
+- **Change Activity Duration**: Users can change the duration of activities from days to weeks, months, or years. The application recalculates the grid and remaining time based on these adjustments, providing an updated visual representation of your life.
+
+- **Change Activity Hours**: Users can also change the duration of activities from hours to days, weeks, months, or years. The application recalculates the grid and remaining time based on these adjustments, providing an updated visual representation of your life.
+
+- **Visualize Remaining Lifetime**: As you add activities, the application dynamically updates the grid to show your remaining lifetime visually, making it easier to prioritize what matters most to you.
+
+## Acknowledgments
+
+The majority of the code for this application was developed using the Windsurf AI tool, which greatly assisted in streamlining the development process and enhancing productivity.
+
 ## Credits
 This application is inspired by Tim Urban's work on [Wait But Why](https://waitbutwhy.com/2014/05/life-weeks.html).
 
