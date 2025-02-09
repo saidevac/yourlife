@@ -39,11 +39,7 @@ In the Settings section, users can customize their experience by entering their 
 
 - **Add New Activities**: Users can easily add new activities to their timeline. This feature allows you to visualize significant events and milestones in your life, helping you plan and reflect on your journey.
 
-- **Change Activity Duration**: Users can change the duration of activities from days to weeks, months, or years. The application recalculates the grid and remaining time based on these adjustments, providing an updated visual representation of your life.
-
-- **Change Activity Hours**: Users can also change the duration of activities from hours to days, weeks, months, or years. The application recalculates the grid and remaining time based on these adjustments, providing an updated visual representation of your life.
-
-- **Visualize Remaining Lifetime**: As you add activities, the application dynamically updates the grid to show your remaining lifetime visually, making it easier to prioritize what matters most to you.
+- **Visualize Remaining Lifetime**: The application dynamically updates the grid to show your remaining lifetime visually, making it easier to prioritize what matters most to you.
 
 ## Acknowledgments
 
