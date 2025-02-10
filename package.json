@@ -2,7 +2,7 @@
   "name": "yourlife",
   "version": "0.1.0",
   "private": true,
-  "homepage": "https://saidevac.github.io/repo",
+  "homepage": "https://saidevac.github.io/yourlife",
 
   "dependencies": {
     "@tailwindcss/postcss": "^4.0.0",
