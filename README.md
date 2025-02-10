@@ -31,15 +31,58 @@ Launches the test runner in the interactive watch mode.
 - **Feedback Button**: Located at the bottom left corner, this button opens your email client to send feedback about the app.
 - **Shape Selector**: This control allows you to choose different shapes for visualizing your timeline. It is located near the top of the grid.
 
+## Life Grid Visualization
+
+The central Life Grid is an interactive visualization of your life timeline:
+
+- **Time Unit Views**: Change how you view your life using the dropdown at the top
+  - **Weeks**: Each cell represents one week (52 weeks = 1 year)
+  - **Months**: Each cell represents one month (12 months = 1 year)
+  - **Years**: Each cell represents one year of your life
+
+- **Grid Navigation**:
+  - **Birth**: Marked at the start of your timeline
+  - **Current Age**: Shows your current position in life
+  - **Turning Points**: Age markers help track significant years (20, 40, 60, 80)
+
+- **Cell Shapes**: Customize the grid appearance using different shapes
+  - **Squares**: Traditional grid layout (default)
+  - **Circles**: Alternative visualization style
+  - Change shapes using the shape selector at the top of the grid
+
+- **Color Coding**:
+  - **Black**: Past weeks/months/years
+  - **Gray**: Future weeks/months/years
+  - **Colored Cells**: Time periods with activities
+  - Each activity gets its own unique color for easy tracking
+
+- **Grid Layout**:
+  - Reads left-to-right, top-to-bottom
+  - Each row represents roughly one year of life
+  - Hover over cells to see the corresponding date
+
 ## Settings Section
 
-In the Settings section, users can customize their experience by entering their Date of Birth (DOB) and average life span. This allows the application to visually represent your life timeline, helping you understand how much time you have left based on your average life expectancy.
+The Settings section allows you to customize your life timeline visualization:
 
-- **Customize Your Life Timeline**: By inputting your DOB and expected lifespan, the app generates a grid that represents your life visually, allowing you to see how your life is structured over time.
+- **Date of Birth (DOB)**: Enter your birth date to set the starting point of your timeline
+- **Average Life Span**: Set your expected lifespan in years to determine the timeline's end point
+- **Progress Tracking**: The app automatically calculates and displays:
+  - Total weeks in your timeline
+  - Weeks lived
+  - Weeks planned
+  - Weeks remaining
 
-- **Add New Activities**: Users can easily add new activities to their timeline. This feature allows you to visualize significant events and milestones in your life, helping you plan and reflect on your journey.
+## Activities Section
 
-- **Visualize Remaining Lifetime**: The application dynamically updates the grid to show your remaining lifetime visually, making it easier to prioritize what matters most to you.
+The Activities section helps you track how you spend your time:
+
+- **Add Activities**: Create new activities to track different aspects of your life
+- **Time Units**: Choose between day, week, month, or year for each activity
+- **Hours**: Set hours spent on each activity (max 24 hours/day or 80 hours/week)
+- **Past & Future**: Mark activities as completed (Past) or planned (Future)
+- **Color Coding**: Each activity gets a unique color for easy visualization
+- **Clear All**: Option to reset all activities when needed
 
 ## Acknowledgments
 
