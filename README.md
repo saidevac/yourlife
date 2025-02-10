@@ -93,6 +93,6 @@ This application is inspired by Tim Urban's work on [Wait But Why](https://waitb
 
 ## Feedback
 
-For any feedback or inquiries, please reach out to [saidevac1129@gmail.com](mailto:saidevac1129@gmail.com) or [developeremail@example.com](mailto:developeremail@example.com).
+For any feedback or inquiries, please reach out to [saidevac1129@gmail.com](mailto:saidevac1129@gmail.com).
 
 Feel free to contribute and provide feedback!
