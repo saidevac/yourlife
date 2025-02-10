@@ -225,17 +225,34 @@ const LifeGrid = () => {
     );
   };
 
-  const handleActivityHoursChange = useCallback((id, hours) => {
-    // Ensure hours is between 0 and 24, rounded to nearest 0.5
+  const getMaxHoursForTimeUnit = useCallback((timeUnit) => {
+    switch (timeUnit) {
+      case 'day':
+        return 24;
+      case 'week':
+      case 'month':
+      case 'year':
+        return 80;
+      default:
+        return 24;
+    }
+  }, []);
+
+  const handleActivityHoursChange = useCallback((id, hours, timeUnit) => {
+    const maxHours = getMaxHoursForTimeUnit(timeUnit);
     const roundedHours = Math.round(hours * 2) / 2;
-    const validHours = Math.min(24, Math.max(0, roundedHours));
+    const validHours = Math.min(maxHours, Math.max(0, roundedHours));
 
     setActivities(prevActivities =>
       prevActivities.map(activity =>
-        activity.id === id ? { ...activity, hours: validHours } : activity
+        activity.id === id ? {
+          ...activity,
+          hours: validHours,
+          hoursPerDay: calculateHoursPerDay(validHours, timeUnit)
+        } : activity
       )
     );
-  }, []);
+  }, [getMaxHoursForTimeUnit, calculateHoursPerDay]);
 
   const handleActivityChange = useCallback((id, field, value) => {
     setActivities(prevActivities => prevActivities.map(activity => {
@@ -282,17 +299,24 @@ const LifeGrid = () => {
   }, []);
 
   const handleAddActivity = useCallback(() => {
-    const newActivity = {
-      id: activities.length + 1,
-      name: 'New Activity',
-      hours: 1, // Default 1 hour, already within 0-24 range
-      timeUnit: 'day',
-      color: getUniqueColor(),
-      spent: false,
-      future: false
-    };
-    setActivities([...activities, newActivity]);
-  }, [activities.length, getUniqueColor]);
+    setActivities(prevActivities => {
+      // Create new activity
+      const maxId = Math.max(...prevActivities.map(a => a.id), 0);
+      const newActivity = {
+        id: maxId + 1,
+        name: 'New Activity',
+        hours: 1,
+        timeUnit: 'day',
+        hoursPerDay: calculateHoursPerDay(1, 'day'),
+        color: getUniqueColor(),
+        spent: false,
+        future: false
+      };
+
+      // Return new array with all existing activities unchanged, plus the new one
+      return [...prevActivities, newActivity];
+    });
+  }, [calculateHoursPerDay, getUniqueColor]);
 
   const handleRemoveActivity = useCallback((id) => {
     setActivities(prevActivities => prevActivities.filter(activity => activity.id !== id));
@@ -361,15 +385,41 @@ const LifeGrid = () => {
     });
   }, []);
 
-  const handleActivityTimeUnitChange = useCallback((activityId, timeUnit) => {
+  const handleActivityTimeUnitChange = useCallback((activityId, newTimeUnit) => {
     setActivities(prevActivities =>
-      prevActivities.map(activity =>
-        activity.id === activityId
-          ? { ...activity, timeUnit, hoursPerDay: calculateHoursPerDay(activity.hours, timeUnit) }
-          : activity
-      )
+      prevActivities.map(activity => {
+        if (activity.id === activityId) {
+          let newHours = activity.hours;
+          
+          // When changing from day to any other unit, scale up proportionally but cap at 80
+          if (activity.timeUnit === 'day' && newTimeUnit !== 'day') {
+            newHours = Math.min(80, activity.hours * 3.33); // Scale up but cap at 80
+          }
+          // When changing to day from any other unit, scale down proportionally
+          else if (activity.timeUnit !== 'day' && newTimeUnit === 'day') {
+            newHours = Math.min(24, activity.hours / 3.33);
+          }
+          // When changing between week/month/year, keep the same hours but cap at 80
+          else if (activity.timeUnit !== 'day' && newTimeUnit !== 'day') {
+            newHours = Math.min(80, activity.hours);
+          }
+
+          // Round to nearest 0.5 and ensure within bounds
+          newHours = Math.round(newHours * 2) / 2;
+          const maxHours = getMaxHoursForTimeUnit(newTimeUnit);
+          newHours = Math.min(maxHours, Math.max(0, newHours));
+
+          return {
+            ...activity,
+            timeUnit: newTimeUnit,
+            hours: newHours,
+            hoursPerDay: calculateHoursPerDay(newHours, newTimeUnit)
+          };
+        }
+        return activity;
+      })
     );
-  }, [calculateHoursPerDay]);
+  }, [calculateHoursPerDay, getMaxHoursForTimeUnit]);
 
   const clearActivities = useCallback(() => {
     setActivities(prevActivities =>
@@ -803,13 +853,12 @@ const LifeGrid = () => {
                     <input
                       type="number"
                       min="0"
-                      max="24"
+                      max={getMaxHoursForTimeUnit(activity.timeUnit)}
                       step="0.5"
                       value={activity.hours}
                       onChange={(e) => {
                         const value = parseFloat(e.target.value) || 0;
-                        const rounded = Math.round(value * 2) / 2;
-                        handleActivityHoursChange(activity.id, Math.min(24, Math.max(0, rounded)));
+                        handleActivityHoursChange(activity.id, value, activity.timeUnit);
                       }}
                       className="w-14 text-sm border border-gray-300 rounded-l px-2 py-0.5"
                     />
